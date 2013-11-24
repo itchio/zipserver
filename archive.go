@@ -9,13 +9,14 @@ import (
 	"strings"
 	"log"
 	"mime"
+	"fmt"
 
 	"archive/zip"
 )
 
 var (
 	tmpDir = "zip_tmp"
-	maxBytes = 100
+	maxBytes = 1024*1024
 )
 
 type Archiver struct {
@@ -33,6 +34,19 @@ func annotatedReader(reader io.Reader) readerClosure {
 	return func (p []byte) (int, error) {
 		bytes_read, err := reader.Read(p)
 		log.Printf("Read %d bytes", bytes_read)
+		return bytes_read, err
+	}
+}
+
+// wraps a reader to fail if it reads more than max of maxBytes
+func limitedReader(reader io.Reader, maxBytes int) readerClosure {
+	return func (p []byte) (int, error) {
+		bytes_read, err := reader.Read(p)
+		maxBytes -= bytes_read
+
+		if maxBytes < 0 {
+			return bytes_read, fmt.Errorf("limited reader: read more than %d bytes", maxBytes)
+		}
 		return bytes_read, err
 	}
 }
@@ -124,7 +138,7 @@ func (a *Archiver) sendZipFile(key string, file *zip.File) (int64, error) {
 	log.Print("Sending: " + key + " (" + mimeType + ")")
 
 	reader, _ := file.Open()
-	err := a.StorageClient.PutFile(a.bucket, key, annotatedReader(reader), mimeType)
+	err := a.StorageClient.PutFile(a.bucket, key, limitedReader(reader, maxBytes), mimeType)
 
 	if err != nil {
 		return 0, err
