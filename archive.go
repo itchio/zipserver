@@ -15,6 +15,7 @@ import (
 
 var (
 	tmpDir = "zip_tmp"
+	maxBytes = 100
 )
 
 type Archiver struct {
@@ -22,11 +23,25 @@ type Archiver struct {
 	bucket string
 }
 
+type readerClosure func(p []byte) (int, error)
+
+func (fn readerClosure) Read(p []byte) (int, error) {
+	return fn(p)
+}
+
+func annotatedReader(reader io.Reader) readerClosure {
+	return func (p []byte) (int, error) {
+		bytes_read, err := reader.Read(p)
+		log.Printf("Read %d bytes", bytes_read)
+		return bytes_read, err
+	}
+}
+
 func NewArchiver(client *StorageClient, bucket string) *Archiver {
 	return &Archiver{client, bucket}
 }
 
-func (a *Archiver) FetchZip(key string) string {
+func (a *Archiver) FetchZip(key string) (string, error) {
 	os.MkdirAll(tmpDir, os.ModeDir | 0777)
 
 	hasher := md5.New()
@@ -34,19 +49,37 @@ func (a *Archiver) FetchZip(key string) string {
 	fname := a.bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
 	fname = path.Join(tmpDir, fname)
 
-	src, _ := a.StorageClient.GetFile(a.bucket, key)
+	src, err := a.StorageClient.GetFile(a.bucket, key)
+
+	if err != nil {
+		return "", err
+	}
+
 	defer src.Close()
 
-	dest, _ := os.Create(fname)
+	dest, err := os.Create(fname)
+
+	if err != nil {
+		return "", err
+	}
+
 	defer dest.Close()
 
-	io.Copy(dest, src)
+	_, err = io.Copy(dest, src)
+	if err != nil {
+		return "", err
+	}
 
-	return fname
+	return fname, nil
 }
 
-func (a *Archiver) SendZipExtracted(prefix, fname string) {
-	zipReader, _ := zip.OpenReader(fname)
+// extracts and sends all files to prefix
+func (a *Archiver) SendZipExtracted(prefix, fname string) error {
+	zipReader, err := zip.OpenReader(fname)
+	if err != nil {
+		return err
+	}
+
 	defer zipReader.Close()
 
 	file_count := 0
@@ -66,15 +99,23 @@ func (a *Archiver) SendZipExtracted(prefix, fname string) {
 		}
 
 		key := path.Join(prefix, file.Name)
-		byte_count += a.SendZipFile(key, file)
+		written, err := a.sendZipFile(key, file)
+
+		if err != nil {
+			log.Print("Failed sending: " + key + " " + err.Error())
+			continue
+		}
+
+		byte_count += written
 		file_count += 1
 	}
 
 	log.Printf("Sent %d files", file_count)
+	return nil
 }
 
-// returns the bytes written
-func (a *Archiver) SendZipFile(key string, file *zip.File) int64 {
+// sends an individual file from zip
+func (a *Archiver) sendZipFile(key string, file *zip.File) (int64, error) {
 	mimeType := mime.TypeByExtension(path.Ext(key))
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
@@ -83,6 +124,21 @@ func (a *Archiver) SendZipFile(key string, file *zip.File) int64 {
 	log.Print("Sending: " + key + " (" + mimeType + ")")
 
 	reader, _ := file.Open()
-	a.StorageClient.PutFile(a.bucket, key, reader, mimeType)
-	return 0
+	err := a.StorageClient.PutFile(a.bucket, key, annotatedReader(reader), mimeType)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return 0, nil
+}
+
+func (a *Archiver) ExtractZip(key, prefix string) error {
+	fname, err := a.FetchZip(key)
+	if err != nil {
+		return err
+	}
+
+	defer os.Remove(fname)
+	return a.SendZipExtracted(prefix, fname)
 }
