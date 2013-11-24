@@ -15,6 +15,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"errors"
 
 	"code.google.com/p/goauth2/oauth"
 	"code.google.com/p/goauth2/oauth/jwt"
@@ -87,10 +88,16 @@ func (c *StorageClient) GetFile(bucket, key string) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	res, err := httpClient.Get(c.url(bucket, key))
+	url := c.url(bucket, key)
+
+	res, err := httpClient.Get(url)
 
 	if err != nil {
 		return nil, err
+	}
+
+	if res.StatusCode != 200 {
+		return nil, errors.New(res.Status + " " + url)
 	}
 
 	return res.Body, nil
