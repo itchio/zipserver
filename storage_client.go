@@ -4,7 +4,7 @@
 //   	ClientEmail: "1111111@developer.gserviceaccount.com",
 //   }
 //
-//   file = client.GetFile("my_bucket", "my_file")
+//   file, err = client.GetFile("my_bucket", "my_file")
 package zip_server
 
 import (
@@ -80,21 +80,35 @@ func (self *StorageClient) url(bucket, key string) string {
 	return url
 }
 
-func (c *StorageClient) GetFile(bucket, key string) (string, error) {
+func (c *StorageClient) GetFile(bucket, key string) (io.ReadCloser, error) {
 	httpClient, err := c.httpClient()
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	res, err := httpClient.Get(c.url(bucket, key))
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	defer res.Body.Close()
-	body, _ := ioutil.ReadAll(res.Body)
+	return res.Body, nil
+}
+
+func (c *StorageClient) GetFileToString(bucket, key string) (string, error) {
+	reader, err := c.GetFile(bucket, key)
+
+	if err != nil {
+		return "", nil
+	}
+
+	defer reader.Close()
+	body, err := ioutil.ReadAll(reader)
+
+	if err != nil {
+		return "", nil
+	}
 
 	return string(body), nil
 }
