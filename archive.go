@@ -40,11 +40,12 @@ func annotatedReader(reader io.Reader) readerClosure {
 
 // wraps a reader to fail if it reads more than max of maxBytes
 func limitedReader(reader io.Reader, maxBytes int) readerClosure {
+	remainingBytes := maxBytes
 	return func (p []byte) (int, error) {
 		bytes_read, err := reader.Read(p)
-		maxBytes -= bytes_read
+		remainingBytes -= bytes_read
 
-		if maxBytes < 0 {
+		if remainingBytes < 0 {
 			return bytes_read, fmt.Errorf("limited reader: read more than %d bytes", maxBytes)
 		}
 		return bytes_read, err
