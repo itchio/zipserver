@@ -158,7 +158,6 @@ func (c *StorageClient) PutFileFromFname(bucket, key, fname string) error {
 		mimeType = "application/octet-stream"
 	}
 
-	c.PutFile(bucket, key, file, mimeType)
-	return nil
+	return c.PutFile(bucket, key, file, mimeType)
 }
 
