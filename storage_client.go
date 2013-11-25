@@ -1,10 +1,6 @@
 // Simple interface to Google Cloud Storage
-//   client := &StorageClient{
-//   	PrivateKeyPath: "private_key.pem",
-//   	ClientEmail: "1111111@developer.gserviceaccount.com",
-//   }
-//
-//   file, err = client.GetFile("my_bucket", "my_file")
+//   client := NewStorageClient(config)
+//   readCloser, err = client.GetFile("my_bucket", "my_file")
 package zip_server
 
 import (
@@ -32,6 +28,13 @@ type StorageClient struct {
 
 	jwtToken *jwt.Token
 	oauthToken *oauth.Token
+}
+
+func NewStorageClient(config *Config) *StorageClient {
+	return &StorageClient{
+		PrivateKeyPath: config.PrivateKeyPath,
+		ClientEmail: config.ClientEmail,
+	}
 }
 
 func (c *StorageClient) refreshTokenIfNecessary() error {
