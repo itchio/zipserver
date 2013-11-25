@@ -11,6 +11,11 @@ var DefaultConfigFname = "zip_server.json"
 type Config struct {
 	PrivateKeyPath string
 	ClientEmail string
+	MaxFileSize int
+}
+
+var defaultConfig = Config{
+	MaxFileSize: 1024 * 1024,
 }
 
 func LoadConfig(fname string) *Config {
@@ -20,13 +25,22 @@ func LoadConfig(fname string) *Config {
 		log.Fatal(err)
 	}
 
-	config := &Config{}
-	err = json.Unmarshal(jsonBlob, config)
+	config := defaultConfig
+	err = json.Unmarshal(jsonBlob, &config)
 
 	if err != nil {
 		log.Fatal("Failed parsing config: " + fname + ": " + err.Error())
 	}
 
-	return config
+	return &config
 }
 
+
+func (c *Config) Dump() string {
+	bytes, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(bytes)
+}

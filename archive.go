@@ -30,6 +30,7 @@ func (fn readerClosure) Read(p []byte) (int, error) {
 	return fn(p)
 }
 
+// debug reader
 func annotatedReader(reader io.Reader) readerClosure {
 	return func (p []byte) (int, error) {
 		bytes_read, err := reader.Read(p)
