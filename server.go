@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"time"
 	"encoding/json"
+	"log"
 
 	"fmt"
 	"sync"
@@ -119,11 +120,11 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	}{true, extracted})
 }
 
-func StartZipServer(listenTo string, _config *Config) {
+func StartZipServer(listenTo string, _config *Config) error {
 	config = _config
 	http.Handle("/", errorHandler(zipHandler))
-	fmt.Println("Listening on: " + listenTo)
-	http.ListenAndServe(listenTo, nil)
+	log.Print("Listening on: " + listenTo)
+	return http.ListenAndServe(listenTo, nil)
 }
 
 
