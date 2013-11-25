@@ -32,23 +32,27 @@ func (fn readerClosure) Read(p []byte) (int, error) {
 // debug reader
 func annotatedReader(reader io.Reader) readerClosure {
 	return func (p []byte) (int, error) {
-		bytes_read, err := reader.Read(p)
-		log.Printf("Read %d bytes", bytes_read)
-		return bytes_read, err
+		bytesRead, err := reader.Read(p)
+		log.Printf("Read %d bytes", bytesRead)
+		return bytesRead, err
 	}
 }
 
-// wraps a reader to fail if it reads more than max of maxBytes
-func limitedReader(reader io.Reader, maxBytes int) readerClosure {
+// wraps a reader to fail if it reads more than max of maxBytes, also tracks
+// the total amount of bytes read
+func limitedReader(reader io.Reader, maxBytes int, totalBytes *int) readerClosure {
 	remainingBytes := maxBytes
 	return func (p []byte) (int, error) {
-		bytes_read, err := reader.Read(p)
-		remainingBytes -= bytes_read
+		bytesRead, err := reader.Read(p)
+		remainingBytes -= bytesRead
+
+		*totalBytes += bytesRead
 
 		if remainingBytes < 0 {
-			return bytes_read, fmt.Errorf("limited reader: read more than %d bytes", maxBytes)
+			return bytesRead, fmt.Errorf("limited reader: read more than %d bytes", maxBytes)
 		}
-		return bytes_read, err
+
+		return bytesRead, err
 	}
 }
 
@@ -106,7 +110,7 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 	defer zipReader.Close()
 
 	file_count := 0
-	byte_count := int64(0)
+	byte_count := 0
 
 	for _, file := range zipReader.File {
 		if strings.HasSuffix(file.Name, "/") {
@@ -139,7 +143,7 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 }
 
 // sends an individual file from zip
-func (a *Archiver) sendZipFile(key string, file *zip.File) (int64, error) {
+func (a *Archiver) sendZipFile(key string, file *zip.File) (int, error) {
 	mimeType := mime.TypeByExtension(path.Ext(key))
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
@@ -147,14 +151,17 @@ func (a *Archiver) sendZipFile(key string, file *zip.File) (int64, error) {
 
 	log.Print("Sending: " + key + " (" + mimeType + ")")
 
+	bytesRead := 0
+
 	reader, _ := file.Open()
-	err := a.StorageClient.PutFile(a.Bucket, key, limitedReader(reader, a.MaxFileSize), mimeType)
+	limited := limitedReader(reader, a.MaxFileSize, &bytesRead)
+	err := a.StorageClient.PutFile(a.Bucket, key, limited, mimeType)
 
 	if err != nil {
-		return 0, err
+		return bytesRead, err
 	}
 
-	return 0, nil
+	return bytesRead, nil
 }
 
 func (a *Archiver) ExtractZip(key, prefix string) ([]ExtractedFile, error) {
