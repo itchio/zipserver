@@ -110,14 +110,14 @@ func (c *StorageClient) GetFileToString(bucket, key string) (string, error) {
 	reader, err := c.GetFile(bucket, key)
 
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 
 	defer reader.Close()
 	body, err := ioutil.ReadAll(reader)
 
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 
 	return string(body), nil
@@ -168,7 +168,7 @@ func (c *StorageClient) DeleteFile(bucket, key string) error {
 	httpClient, err := c.httpClient()
 
 	if err != nil {
-		return nil
+		return err
 	}
 
 	url := c.url(bucket, key)
