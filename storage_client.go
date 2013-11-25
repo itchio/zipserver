@@ -77,10 +77,10 @@ func (c *StorageClient) httpClient() (*http.Client, error) {
 	return transport.Client(), nil
 }
 
-func (self *StorageClient) url(bucket, key string) string {
+func (c *StorageClient) url(bucket, key, logName string) string {
 	// return "http://127.0.0.1:5656"
 	url := baseUrl + bucket + "/" + key
-	log.Print(url)
+	log.Print(logName + " " + url)
 	return url
 }
 
@@ -91,7 +91,7 @@ func (c *StorageClient) GetFile(bucket, key string) (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	url := c.url(bucket, key)
+	url := c.url(bucket, key, "GET")
 
 	res, err := httpClient.Get(url)
 
@@ -130,7 +130,7 @@ func (c *StorageClient) PutFile(bucket, key string, contents io.Reader, mimeType
 		return err
 	}
 
-	req, err := http.NewRequest("PUT", c.url(bucket, key), contents)
+	req, err := http.NewRequest("PUT", c.url(bucket, key, "PUT"), contents)
 
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func (c *StorageClient) DeleteFile(bucket, key string) error {
 		return err
 	}
 
-	url := c.url(bucket, key)
+	url := c.url(bucket, key, "DELETE")
 	req, err := http.NewRequest("DELETE", url, nil)
 
 	if err != nil {
