@@ -82,9 +82,8 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func StartZipServer(port int) {
+func StartZipServer(listenTo string, config *Config) {
 	http.Handle("/", errorHandler(zipHandler))
-	listenTo := fmt.Sprintf(":%d", port)
 	fmt.Println("Listening on: " + listenTo)
 	http.ListenAndServe(listenTo, nil)
 }
