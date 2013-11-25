@@ -54,7 +54,7 @@ func limitedReader(reader io.Reader, maxBytes int, totalBytes *int) readerClosur
 		*totalBytes += bytesRead
 
 		if remainingBytes < 0 {
-			return bytesRead, fmt.Errorf("limited reader: read more than %d bytes", maxBytes)
+			return bytesRead, fmt.Errorf("Extracted file too large (max %d bytes)", maxBytes)
 		}
 
 		return bytesRead, err
@@ -114,6 +114,11 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 		return nil, err
 	}
 
+	if len(zipReader.File) > a.MaxNumFiles {
+		return nil, fmt.Errorf("Too many files in zip (%v > %v)",
+			len(zipReader.File), a.MaxNumFiles)
+	}
+
 	extractedFiles := []ExtractedFile{}
 
 	defer zipReader.Close()
@@ -145,6 +150,12 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 
 		extractedFiles = append(extractedFiles, ExtractedFile{key, int(written)})
 		byte_count += written
+
+		if byte_count > a.MaxTotalSize {
+			a.abortUpload(extractedFiles)
+			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", a.MaxTotalSize)
+		}
+
 		file_count += 1
 	}
 
