@@ -102,7 +102,7 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	lockKey(key)
 
 	archiver := NewArchiver(config)
-	err = archiver.ExtractZip(key, prefix)
+	extracted, err := archiver.ExtractZip(key, prefix)
 
 	if err != nil {
 		releaseKey(key)
@@ -113,7 +113,10 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	releaseKeyLater(key)
-	return writeJsonMessage(w, struct{Success bool}{true})
+	return writeJsonMessage(w, struct{
+		Success bool
+		ExtractedFiles []ExtractedFile
+	}{true, extracted})
 }
 
 func StartZipServer(listenTo string, _config *Config) {

@@ -89,12 +89,19 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 	return fname, nil
 }
 
+type ExtractedFile struct {
+	Fname string
+	Size int
+}
+
 // extracts and sends all files to prefix
-func (a *Archiver) sendZipExtracted(prefix, fname string) error {
+func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, error) {
 	zipReader, err := zip.OpenReader(fname)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	extractedFiles := []ExtractedFile{}
 
 	defer zipReader.Close()
 
@@ -122,12 +129,13 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) error {
 			continue
 		}
 
+		extractedFiles = append(extractedFiles, ExtractedFile{key, int(written)})
 		byte_count += written
 		file_count += 1
 	}
 
 	log.Printf("Sent %d files", file_count)
-	return nil
+	return extractedFiles, nil
 }
 
 // sends an individual file from zip
@@ -149,10 +157,10 @@ func (a *Archiver) sendZipFile(key string, file *zip.File) (int64, error) {
 	return 0, nil
 }
 
-func (a *Archiver) ExtractZip(key, prefix string) error {
+func (a *Archiver) ExtractZip(key, prefix string) ([]ExtractedFile, error) {
 	fname, err := a.fetchZip(key)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	defer os.Remove(fname)
