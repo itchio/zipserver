@@ -33,15 +33,18 @@ func lockKey(key string) {
 	shared.openKeys[key] = true
 }
 
+func releaseKey(key string) {
+	shared.Lock()
+	defer shared.Unlock()
+	shared.openKeys[key] = false
+}
+
 // release the key later to give the initial requester time to update the
 // database
 func releaseKeyLater(key string) {
 	go func() {
 		<-time.After(10 * time.Second)
-		shared.Lock()
-		defer shared.Unlock()
-
-		shared.openKeys[key] = false
+		releaseKey(key)
 	}()
 }
 
@@ -70,6 +73,16 @@ func getParam(params url.Values, name string) (string, error) {
 	return val, nil
 }
 
+func writeJsonMessage(w http.ResponseWriter, msg interface{}) error {
+	blob, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	w.Header()["Content-Type"] = []string{"application/json"}
+	w.Write(blob)
+	return nil
+}
+
 func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	params := r.URL.Query()
 	key, err := getParam(params, "key")
@@ -77,26 +90,30 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	prefix, err := getParam(params, "prefix")
+	if err != nil {
+		return err
+	}
+
 	if keyBusy(key) {
-		msg, err := json.Marshal(struct{Error string}{"already processing"})
-		if err != nil {
-			return err
-		}
-		w.Header()["Content-Type"] = []string{"application/json"}
-		w.Write(msg)
-		return nil
+		return writeJsonMessage(w, struct{Error string}{"already processing"})
 	}
 
 	lockKey(key)
-	defer releaseKeyLater(key)
 
-	// archiver := NewArchiver(config)
-	// err := archiver.ExtractZip("test.zip", "zips/test")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	archiver := NewArchiver(config)
+	err = archiver.ExtractZip(key, prefix)
 
-	return nil
+	if err != nil {
+		releaseKey(key)
+		return writeJsonMessage(w, struct{
+			Type string
+			Error string
+		}{"ExtractError", err.Error()})
+	}
+
+	releaseKeyLater(key)
+	return writeJsonMessage(w, struct{Success bool}{true})
 }
 
 func StartZipServer(listenTo string, _config *Config) {
