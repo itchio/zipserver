@@ -4,10 +4,13 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+	"encoding/json"
 
 	"fmt"
 	"sync"
 )
+
+var config *Config
 
 var shared struct {
 	sync.Mutex
@@ -24,13 +27,17 @@ func keyBusy(key string) bool {
 	return shared.openKeys[key]
 }
 
-func lockTemp(key string) {
+func lockKey(key string) {
 	shared.Lock()
 	defer shared.Unlock()
 	shared.openKeys[key] = true
+}
 
+// release the key later to give the initial requester time to update the
+// database
+func releaseKeyLater(key string) {
 	go func() {
-		<-time.After(5 * time.Second)
+		<-time.After(10 * time.Second)
 		shared.Lock()
 		defer shared.Unlock()
 
@@ -70,19 +77,30 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	w.Write([]byte("Got key: " + key + "\n"))
-
 	if keyBusy(key) {
-		w.Write([]byte("Busy"))
-	} else {
-		w.Write([]byte("Not busy"))
-		lockTemp(key)
+		msg, err := json.Marshal(struct{Error string}{"already processing"})
+		if err != nil {
+			return err
+		}
+		w.Header()["Content-Type"] = []string{"application/json"}
+		w.Write(msg)
+		return nil
 	}
+
+	lockKey(key)
+	defer releaseKeyLater(key)
+
+	// archiver := NewArchiver(config)
+	// err := archiver.ExtractZip("test.zip", "zips/test")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	return nil
 }
 
-func StartZipServer(listenTo string, config *Config) {
+func StartZipServer(listenTo string, _config *Config) {
+	config = _config
 	http.Handle("/", errorHandler(zipHandler))
 	fmt.Println("Listening on: " + listenTo)
 	http.ListenAndServe(listenTo, nil)
