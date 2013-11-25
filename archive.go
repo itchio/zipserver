@@ -23,6 +23,11 @@ type Archiver struct {
 	*Config
 }
 
+type ExtractedFile struct {
+	Key string
+	Size int
+}
+
 type readerClosure func(p []byte) (int, error)
 
 func (fn readerClosure) Read(p []byte) (int, error) {
@@ -93,9 +98,13 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 	return fname, nil
 }
 
-type ExtractedFile struct {
-	Fname string
-	Size int
+// delete all files that have been uploaded so far
+func (a *Archiver) abortUpload(files []ExtractedFile) error {
+	for _, file := range files {
+		a.StorageClient.DeleteFile(a.Bucket, file.Key)
+	}
+
+	return nil
 }
 
 // extracts and sends all files to prefix
@@ -130,7 +139,8 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 
 		if err != nil {
 			log.Print("Failed sending: " + key + " " + err.Error())
-			continue
+			a.abortUpload(extractedFiles)
+			return nil, err
 		}
 
 		extractedFiles = append(extractedFiles, ExtractedFile{key, int(written)})

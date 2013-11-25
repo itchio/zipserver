@@ -1,6 +1,3 @@
-// Simple interface to Google Cloud Storage
-//   client := NewStorageClient(config)
-//   readCloser, err = client.GetFile("my_bucket", "my_file")
 package zip_server
 
 import (
@@ -22,6 +19,9 @@ var (
 	scope = "https://www.googleapis.com/auth/devstorage.full_control"
 )
 
+// Simple interface to Google Cloud Storage
+//   client := NewStorageClient(config)
+//   readCloser, err = client.GetFile("my_bucket", "my_file")
 type StorageClient struct {
 	PrivateKeyPath string
 	ClientEmail string
