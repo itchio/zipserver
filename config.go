@@ -11,11 +11,16 @@ var DefaultConfigFname = "zip_server.json"
 type Config struct {
 	PrivateKeyPath string
 	ClientEmail string
+	Bucket string
+	ExtractPrefix string
 	MaxFileSize int
+	MaxNumFiles int
 }
 
 var defaultConfig = Config{
 	MaxFileSize: 1024 * 1024,
+	MaxNumFiles: 100,
+	ExtractPrefix: "html5",
 }
 
 func LoadConfig(fname string) *Config {

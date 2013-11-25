@@ -16,12 +16,11 @@ import (
 
 var (
 	tmpDir = "zip_tmp"
-	maxBytes = 1024*1024
 )
 
 type Archiver struct {
 	*StorageClient
-	bucket string
+	*Config
 }
 
 type readerClosure func(p []byte) (int, error)
@@ -53,19 +52,20 @@ func limitedReader(reader io.Reader, maxBytes int) readerClosure {
 	}
 }
 
-func NewArchiver(client *StorageClient, bucket string) *Archiver {
-	return &Archiver{client, bucket}
+func NewArchiver(config *Config) *Archiver {
+	storage := NewStorageClient(config)
+	return &Archiver{storage, config}
 }
 
-func (a *Archiver) FetchZip(key string) (string, error) {
+func (a *Archiver) fetchZip(key string) (string, error) {
 	os.MkdirAll(tmpDir, os.ModeDir | 0777)
 
 	hasher := md5.New()
 	hasher.Write([]byte(key))
-	fname := a.bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
+	fname := a.Bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
 	fname = path.Join(tmpDir, fname)
 
-	src, err := a.StorageClient.GetFile(a.bucket, key)
+	src, err := a.StorageClient.GetFile(a.Bucket, key)
 
 	if err != nil {
 		return "", err
@@ -90,7 +90,7 @@ func (a *Archiver) FetchZip(key string) (string, error) {
 }
 
 // extracts and sends all files to prefix
-func (a *Archiver) SendZipExtracted(prefix, fname string) error {
+func (a *Archiver) sendZipExtracted(prefix, fname string) error {
 	zipReader, err := zip.OpenReader(fname)
 	if err != nil {
 		return err
@@ -140,7 +140,7 @@ func (a *Archiver) sendZipFile(key string, file *zip.File) (int64, error) {
 	log.Print("Sending: " + key + " (" + mimeType + ")")
 
 	reader, _ := file.Open()
-	err := a.StorageClient.PutFile(a.bucket, key, limitedReader(reader, maxBytes), mimeType)
+	err := a.StorageClient.PutFile(a.Bucket, key, limitedReader(reader, a.MaxFileSize), mimeType)
 
 	if err != nil {
 		return 0, err
@@ -150,11 +150,12 @@ func (a *Archiver) sendZipFile(key string, file *zip.File) (int64, error) {
 }
 
 func (a *Archiver) ExtractZip(key, prefix string) error {
-	fname, err := a.FetchZip(key)
+	fname, err := a.fetchZip(key)
 	if err != nil {
 		return err
 	}
 
 	defer os.Remove(fname)
-	return a.SendZipExtracted(prefix, fname)
+	prefix = path.Join(a.ExtractPrefix, prefix)
+	return a.sendZipExtracted(prefix, fname)
 }
