@@ -9,6 +9,8 @@ size, total file size, or number of files.
 Install:
 
 ```bash
-$ go get github.com/leafo/zip_server
+> go get github.com/leafo/zip_server
+> go install github.com/leafo/zip_server/zip_server
+> $GOPATH/bin/zip_server
 ```
 
