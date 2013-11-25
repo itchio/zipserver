@@ -164,3 +164,30 @@ func (c *StorageClient) PutFileFromFname(bucket, key, fname string) error {
 	return c.PutFile(bucket, key, file, mimeType)
 }
 
+func (c *StorageClient) DeleteFile(bucket, key string) error {
+	httpClient, err := c.httpClient()
+
+	if err != nil {
+		return nil
+	}
+
+	url := c.url(bucket, key)
+	req, err := http.NewRequest("DELETE", url, nil)
+
+	if err != nil {
+		return err
+	}
+
+	res, err := httpClient.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode != 200 {
+		return errors.New(res.Status + " " + url)
+	}
+
+	return nil
+}
+
