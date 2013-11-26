@@ -16,12 +16,14 @@ type Config struct {
 	MaxFileSize int
 	MaxTotalSize int
 	MaxNumFiles int
+	MaxFileNameLength int
 }
 
 var defaultConfig = Config{
 	MaxFileSize: 1024 * 1024 * 200,
 	MaxTotalSize: 1024 * 1024 * 500,
 	MaxNumFiles: 100,
+	MaxFileNameLength: 80,
 }
 
 func LoadConfig(fname string) *Config {

@@ -127,6 +127,12 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 	byte_count := 0
 
 	for _, file := range zipReader.File {
+		if len(file.Name) > a.MaxFileNameLength {
+			return nil, fmt.Errorf("Zip contains file paths that are too long")
+		}
+	}
+
+	for _, file := range zipReader.File {
 		if strings.HasSuffix(file.Name, "/") {
 			continue
 		}
