@@ -97,7 +97,7 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if keyBusy(key) {
-		return writeJsonMessage(w, struct{Error string}{"already processing"})
+		return writeJsonMessage(w, struct{Processing bool}{true})
 	}
 
 	lockKey(key)
