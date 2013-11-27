@@ -130,6 +130,10 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 		if len(file.Name) > a.MaxFileNameLength {
 			return nil, fmt.Errorf("Zip contains file paths that are too long")
 		}
+
+		if file.UncompressedSize64 > uint64(a.MaxFileSize) {
+			return nil, fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
+		}
 	}
 
 	for _, file := range zipReader.File {
