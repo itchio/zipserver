@@ -100,24 +100,65 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		return writeJsonMessage(w, struct{Processing bool}{true})
 	}
 
-	lockKey(key)
+	process := func() ([]ExtractedFile, error) {
+		lockKey(key)
+		archiver := NewArchiver(config)
+		files, err := archiver.ExtractZip(key, prefix)
 
-	archiver := NewArchiver(config)
-	extracted, err := archiver.ExtractZip(key, prefix)
+		if err != nil {
+			releaseKey(key)
+		} else {
+			releaseKeyLater(key)
+		}
 
-	if err != nil {
-		releaseKey(key)
-		return writeJsonMessage(w, struct{
-			Type string
-			Error string
-		}{"ExtractError", err.Error()})
+		return files, err
 	}
 
-	releaseKeyLater(key)
-	return writeJsonMessage(w, struct{
-		Success bool
-		ExtractedFiles []ExtractedFile
-	}{true, extracted})
+	asyncUrl := params["async"]
+	if len(asyncUrl) == 0 {
+		extracted, err := process()
+		if err != nil {
+			return writeJsonMessage(w, struct{
+				Type string
+				Error string
+			}{"ExtractError", err.Error()})
+		}
+
+		return writeJsonMessage(w, struct{
+			Success bool
+			ExtractedFiles []ExtractedFile
+		}{true, extracted})
+	} else {
+		go (func() {
+			extracted, err := process()
+			resValues := url.Values{}
+
+			if err != nil {
+				resValues.Add("Type", "ExtractError")
+				resValues.Add("Error", err.Error())
+			} else {
+				resValues.Add("Success", "true")
+				for idx, extractedFile := range extracted {
+					resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Key])", idx + 1),
+						extractedFile.Key)
+					resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Size])", idx + 1),
+						fmt.Sprintf("%v", extractedFile.Size))
+				}
+			}
+
+			_, err = http.PostForm(asyncUrl[0], resValues)
+			if err != nil {
+				log.Print("Failed to deliver callback: " + err.Error())
+			}
+		})()
+
+		return writeJsonMessage(w, struct{
+			Processing bool
+			Async bool
+		}{true, true})
+	}
+
+	return nil
 }
 
 func StartZipServer(listenTo string, _config *Config) error {
