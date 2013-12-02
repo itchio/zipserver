@@ -21,7 +21,7 @@ Create a config file:
 
 ```json
 {
-	"PrivateKeyPath": "path/to/service/key.pem,
+	"PrivateKeyPath": "path/to/service/key.pem",
 	"ClientEmail": "111111111111@developer.gserviceaccount.com"
 }
 ```
