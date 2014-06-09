@@ -124,6 +124,14 @@ func (c *StorageClient) GetFileToString(bucket, key string) (string, error) {
 }
 
 func (c *StorageClient) PutFile(bucket, key string, contents io.Reader, mimeType string) error {
+	return c.PutFileWithSetup(bucket, key, contents, func(req *http.Request) error {
+		req.Header.Add("Content-Type", mimeType)
+		req.Header.Add("x-goog-acl", "public-read")
+		return nil
+	})
+}
+
+func (c *StorageClient) PutFileWithSetup(bucket, key string, contents io.Reader, setup func(*http.Request) error) error {
 	httpClient, err := c.httpClient()
 
 	if err != nil {
@@ -136,8 +144,11 @@ func (c *StorageClient) PutFile(bucket, key string, contents io.Reader, mimeType
 		return err
 	}
 
-	req.Header.Add("Content-Type", mimeType)
-	req.Header.Add("x-goog-acl", "public-read")
+	err = setup(req)
+
+	if err != nil {
+		return err
+	}
 
 	res, err := httpClient.Do(req)
 
