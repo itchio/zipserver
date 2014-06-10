@@ -21,15 +21,9 @@ func (fn errorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // get the first value of param or error
 func getParam(params url.Values, name string) (string, error) {
-	vals := params[name]
+	val := params.Get(name)
 
-	if len(vals) == 0 {
-		return "", fmt.Errorf("Missing param %v", name)
-	}
-
-	val := vals[0]
-
-	if len(val) == 0 {
+	if val == "" {
 		return "", fmt.Errorf("Missing param %v", name)
 	}
 

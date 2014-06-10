@@ -75,8 +75,8 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		return files, err
 	}
 
-	asyncURL := params["async"]
-	if len(asyncURL) == 0 {
+	asyncURL := params.Get("async")
+	if asyncURL == "" {
 		extracted, err := process()
 		if err != nil {
 			return writeJSONMessage(w, struct {
@@ -108,8 +108,8 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 			}
 		}
 
-		log.Print("notifying " + asyncURL[0])
-		_, err = http.PostForm(asyncURL[0], resValues)
+		log.Print("Notifying " + asyncURL)
+		_, err = http.PostForm(asyncURL, resValues)
 		if err != nil {
 			log.Print("Failed to deliver callback: " + err.Error())
 		}
