@@ -42,7 +42,9 @@ func writeJSONMessage(w http.ResponseWriter, msg interface{}) error {
 
 func StartZipServer(listenTo string, _config *Config) error {
 	config = _config
-	http.Handle("/", errorHandler(zipHandler))
+	http.Handle("/extract_zip", errorHandler(zipHandler))
+	http.Handle("/slurp", errorHandler(slurpHandler))
+
 	log.Print("Listening on: " + listenTo)
 	return http.ListenAndServe(listenTo, nil)
 }
