@@ -40,6 +40,13 @@ func writeJSONMessage(w http.ResponseWriter, msg interface{}) error {
 	return nil
 }
 
+func writeJSONError(w http.ResponseWriter, kind string, err error) error {
+	return writeJSONMessage(w, struct {
+		Type  string
+		Error string
+	}{kind, err.Error()})
+}
+
 func StartZipServer(listenTo string, _config *Config) error {
 	config = _config
 	http.Handle("/extract_zip", errorHandler(zipHandler))

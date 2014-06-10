@@ -54,7 +54,7 @@ func limitedReader(reader io.Reader, maxBytes int, totalBytes *int) readerClosur
 		*totalBytes += bytesRead
 
 		if remainingBytes < 0 {
-			return bytesRead, fmt.Errorf("Extracted file too large (max %d bytes)", maxBytes)
+			return bytesRead, fmt.Errorf("File too large (max %d bytes)", maxBytes)
 		}
 
 		return bytesRead, err

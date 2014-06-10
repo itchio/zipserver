@@ -79,10 +79,7 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	if asyncURL == "" {
 		extracted, err := process()
 		if err != nil {
-			return writeJSONMessage(w, struct {
-				Type  string
-				Error string
-			}{"ExtractError", err.Error()})
+			return writeJSONError(w, "ExtractError", err)
 		}
 
 		return writeJSONMessage(w, struct {
