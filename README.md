@@ -37,6 +37,6 @@ $GOPATH/bin/zip_server
 Extract a zip file:
 
 ```bash
-curl http://localhost:8090/?key=zips/my_file.zip&prefix=extracted
+curl http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted
 ```
 

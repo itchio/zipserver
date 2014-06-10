@@ -49,7 +49,7 @@ func writeJSONError(w http.ResponseWriter, kind string, err error) error {
 
 func StartZipServer(listenTo string, _config *Config) error {
 	config = _config
-	http.Handle("/extract_zip", errorHandler(zipHandler))
+	http.Handle("/extract", errorHandler(zipHandler))
 	http.Handle("/slurp", errorHandler(slurpHandler))
 
 	log.Print("Listening on: " + listenTo)
