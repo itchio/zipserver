@@ -1,15 +1,15 @@
 package zip_server
 
 import (
-	"os"
-	"io"
-	"encoding/hex"
 	"crypto/md5"
-	"path"
-	"strings"
+	"encoding/hex"
+	"fmt"
+	"io"
 	"log"
 	"mime"
-	"fmt"
+	"os"
+	"path"
+	"strings"
 
 	"archive/zip"
 )
@@ -24,7 +24,7 @@ type Archiver struct {
 }
 
 type ExtractedFile struct {
-	Key string
+	Key  string
 	Size int
 }
 
@@ -36,7 +36,7 @@ func (fn readerClosure) Read(p []byte) (int, error) {
 
 // debug reader
 func annotatedReader(reader io.Reader) readerClosure {
-	return func (p []byte) (int, error) {
+	return func(p []byte) (int, error) {
 		bytesRead, err := reader.Read(p)
 		log.Printf("Read %d bytes", bytesRead)
 		return bytesRead, err
@@ -47,7 +47,7 @@ func annotatedReader(reader io.Reader) readerClosure {
 // the total amount of bytes read
 func limitedReader(reader io.Reader, maxBytes int, totalBytes *int) readerClosure {
 	remainingBytes := maxBytes
-	return func (p []byte) (int, error) {
+	return func(p []byte) (int, error) {
 		bytesRead, err := reader.Read(p)
 		remainingBytes -= bytesRead
 
@@ -67,7 +67,7 @@ func NewArchiver(config *Config) *Archiver {
 }
 
 func (a *Archiver) fetchZip(key string) (string, error) {
-	os.MkdirAll(tmpDir, os.ModeDir | 0777)
+	os.MkdirAll(tmpDir, os.ModeDir|0777)
 
 	hasher := md5.New()
 	hasher.Write([]byte(key))
@@ -123,8 +123,8 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 
 	defer zipReader.Close()
 
-	file_count := 0
-	byte_count := 0
+	fileCount := 0
+	byteCount := 0
 
 	for _, file := range zipReader.File {
 		if len(file.Name) > a.MaxFileNameLength {
@@ -159,17 +159,17 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 		}
 
 		extractedFiles = append(extractedFiles, ExtractedFile{key, int(written)})
-		byte_count += written
+		byteCount += written
 
-		if byte_count > a.MaxTotalSize {
+		if byteCount > a.MaxTotalSize {
 			a.abortUpload(extractedFiles)
 			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", a.MaxTotalSize)
 		}
 
-		file_count += 1
+		fileCount++
 	}
 
-	log.Printf("Sent %d files", file_count)
+	log.Printf("Sent %d files", fileCount)
 	return extractedFiles, nil
 }
 

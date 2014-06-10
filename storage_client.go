@@ -1,22 +1,22 @@
 package zip_server
 
 import (
-	"os"
-	"path"
+	"errors"
 	"io"
 	"io/ioutil"
 	"log"
 	"mime"
 	"net/http"
-	"errors"
+	"os"
+	"path"
 
 	"code.google.com/p/goauth2/oauth"
 	"code.google.com/p/goauth2/oauth/jwt"
 )
 
 var (
-	baseUrl = "https://storage.googleapis.com/"
-	scope = "https://www.googleapis.com/auth/devstorage.full_control"
+	baseURL = "https://storage.googleapis.com/"
+	scope   = "https://www.googleapis.com/auth/devstorage.full_control"
 )
 
 // Simple interface to Google Cloud Storage
@@ -24,16 +24,16 @@ var (
 //   readCloser, err = client.GetFile("my_bucket", "my_file")
 type StorageClient struct {
 	PrivateKeyPath string
-	ClientEmail string
+	ClientEmail    string
 
-	jwtToken *jwt.Token
+	jwtToken   *jwt.Token
 	oauthToken *oauth.Token
 }
 
 func NewStorageClient(config *Config) *StorageClient {
 	return &StorageClient{
 		PrivateKeyPath: config.PrivateKeyPath,
-		ClientEmail: config.ClientEmail,
+		ClientEmail:    config.ClientEmail,
 	}
 }
 
@@ -79,7 +79,7 @@ func (c *StorageClient) httpClient() (*http.Client, error) {
 
 func (c *StorageClient) url(bucket, key, logName string) string {
 	// return "http://127.0.0.1:5656"
-	url := baseUrl + bucket + "/" + key
+	url := baseURL + bucket + "/" + key
 	log.Print(logName + " " + url)
 	return url
 }
@@ -201,4 +201,3 @@ func (c *StorageClient) DeleteFile(bucket, key string) error {
 
 	return nil
 }
-

@@ -1,11 +1,11 @@
 package zip_server
 
 import (
+	"encoding/json"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
-	"encoding/json"
-	"log"
 
 	"fmt"
 	"sync"
@@ -52,7 +52,7 @@ func releaseKeyLater(key string) {
 type errorHandler func(http.ResponseWriter, *http.Request) error
 
 func (fn errorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if err := fn(w,r); err != nil {
+	if err := fn(w, r); err != nil {
 		http.Error(w, err.Error(), 500)
 	}
 }
@@ -74,7 +74,7 @@ func getParam(params url.Values, name string) (string, error) {
 	return val, nil
 }
 
-func writeJsonMessage(w http.ResponseWriter, msg interface{}) error {
+func writeJSONMessage(w http.ResponseWriter, msg interface{}) error {
 	blob, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -97,7 +97,7 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if keyBusy(key) {
-		return writeJsonMessage(w, struct{Processing bool}{true})
+		return writeJSONMessage(w, struct{ Processing bool }{true})
 	}
 
 	process := func() ([]ExtractedFile, error) {
@@ -114,18 +114,18 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		return files, err
 	}
 
-	asyncUrl := params["async"]
-	if len(asyncUrl) == 0 {
+	asyncURL := params["async"]
+	if len(asyncURL) == 0 {
 		extracted, err := process()
 		if err != nil {
-			return writeJsonMessage(w, struct{
-				Type string
+			return writeJSONMessage(w, struct {
+				Type  string
 				Error string
 			}{"ExtractError", err.Error()})
 		}
 
-		return writeJsonMessage(w, struct{
-			Success bool
+		return writeJSONMessage(w, struct {
+			Success        bool
 			ExtractedFiles []ExtractedFile
 		}{true, extracted})
 	} else {
@@ -139,23 +139,23 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 			} else {
 				resValues.Add("Success", "true")
 				for idx, extractedFile := range extracted {
-					resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Key])", idx + 1),
+					resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Key])", idx+1),
 						extractedFile.Key)
-					resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Size])", idx + 1),
+					resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Size])", idx+1),
 						fmt.Sprintf("%v", extractedFile.Size))
 				}
 			}
 
-			log.Print("notifying " + asyncUrl[0])
-			_, err = http.PostForm(asyncUrl[0], resValues)
+			log.Print("notifying " + asyncURL[0])
+			_, err = http.PostForm(asyncURL[0], resValues)
 			if err != nil {
 				log.Print("Failed to deliver callback: " + err.Error())
 			}
 		})()
 
-		return writeJsonMessage(w, struct{
+		return writeJSONMessage(w, struct {
 			Processing bool
-			Async bool
+			Async      bool
 		}{true, true})
 	}
 
@@ -168,5 +168,3 @@ func StartZipServer(listenTo string, _config *Config) error {
 	log.Print("Listening on: " + listenTo)
 	return http.ListenAndServe(listenTo, nil)
 }
-
-

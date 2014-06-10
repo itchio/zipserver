@@ -9,20 +9,20 @@ import (
 var DefaultConfigFname = "zip_server.json"
 
 type Config struct {
-	PrivateKeyPath string
-	ClientEmail string
-	Bucket string
-	ExtractPrefix string
-	MaxFileSize int
-	MaxTotalSize int
-	MaxNumFiles int
+	PrivateKeyPath    string
+	ClientEmail       string
+	Bucket            string
+	ExtractPrefix     string
+	MaxFileSize       int
+	MaxTotalSize      int
+	MaxNumFiles       int
 	MaxFileNameLength int
 }
 
 var defaultConfig = Config{
-	MaxFileSize: 1024 * 1024 * 200,
-	MaxTotalSize: 1024 * 1024 * 500,
-	MaxNumFiles: 100,
+	MaxFileSize:       1024 * 1024 * 200,
+	MaxTotalSize:      1024 * 1024 * 500,
+	MaxNumFiles:       100,
 	MaxFileNameLength: 80,
 }
 
@@ -42,7 +42,6 @@ func LoadConfig(fname string) *Config {
 
 	return &config
 }
-
 
 func (c *Config) Dump() string {
 	bytes, err := json.MarshalIndent(c, "", "  ")

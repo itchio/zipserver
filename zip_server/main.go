@@ -1,19 +1,19 @@
 package main
 
 import (
-	"fmt"
-	"log"
 	"flag"
-	"os"
+	"fmt"
 	. "github.com/leafo/zip_server"
+	"log"
+	"os"
 )
 
 var _ fmt.Formatter
 
 var (
 	configFname string
-	listenTo string
-	dumpConfig bool
+	listenTo    string
+	dumpConfig  bool
 )
 
 func init() {
@@ -35,4 +35,3 @@ func main() {
 		log.Fatal(err)
 	}
 }
-
