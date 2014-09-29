@@ -41,3 +41,13 @@ Extract a zip file:
 curl http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted
 ```
 
+
+## Slurping
+
+You can tell the zip server to download a file from a URL. This can be used to
+load a zip file you want to extract later.
+
+```bash
+curl http://localhost:8090/slurp?key=myfile.zip&url=http://leafo.net/file.zip
+```
+
