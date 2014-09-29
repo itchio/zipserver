@@ -1,4 +1,4 @@
-# zip_server
+# zipserver
 
 Zip server is an HTTP service that takes a key to a zip file on Google Cloud
 storage, extracts it, then reuploads the individual files to a specified
@@ -11,8 +11,9 @@ size, total file size, or number of files.
 Install
 
 ```bash
-go get github.com/leafo/zip_server
-go install github.com/leafo/zip_server/zip_server
+go get github.com/leafo/zipserver
+
+zipserver -help
 ```
 
 Create a config file:
@@ -31,7 +32,7 @@ More config settings can be found in `config.go`
 Run:
 
 ```bash
-$GOPATH/bin/zip_server
+$GOPATH/bin/zipserver
 ```
 
 Extract a zip file:

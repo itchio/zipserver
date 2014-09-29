@@ -1,4 +1,4 @@
-package zip_server
+package zipserver
 
 import (
 	"fmt"

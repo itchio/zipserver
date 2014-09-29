@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	. "github.com/leafo/zip_server"
+	. "github.com/leafo/zipserver/zipserver"
 )
 
 var _ fmt.Formatter
