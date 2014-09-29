@@ -75,15 +75,15 @@ func (a *Archiver) abortUpload(files []ExtractedFile) error {
 }
 
 // extracts and sends all files to prefix
-func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, error) {
+func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits) ([]ExtractedFile, error) {
 	zipReader, err := zip.OpenReader(fname)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(zipReader.File) > a.MaxNumFiles {
+	if len(zipReader.File) > limits.MaxNumFiles {
 		return nil, fmt.Errorf("Too many files in zip (%v > %v)",
-			len(zipReader.File), a.MaxNumFiles)
+			len(zipReader.File), limits.MaxNumFiles)
 	}
 
 	extractedFiles := []ExtractedFile{}
@@ -94,11 +94,11 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 	byteCount := 0
 
 	for _, file := range zipReader.File {
-		if len(file.Name) > a.MaxFileNameLength {
+		if len(file.Name) > limits.MaxFileNameLength {
 			return nil, fmt.Errorf("Zip contains file paths that are too long")
 		}
 
-		if file.UncompressedSize64 > uint64(a.MaxFileSize) {
+		if file.UncompressedSize64 > uint64(limits.MaxFileSize) {
 			return nil, fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
 		}
 	}
@@ -117,7 +117,7 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 		}
 
 		key := path.Join(prefix, file.Name)
-		written, err := a.sendZipFile(key, file)
+		written, err := a.sendZipFile(key, file, limits)
 
 		if err != nil {
 			log.Print("Failed sending: " + key + " " + err.Error())
@@ -128,9 +128,9 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 		extractedFiles = append(extractedFiles, ExtractedFile{key, int(written)})
 		byteCount += written
 
-		if byteCount > a.MaxTotalSize {
+		if byteCount > limits.MaxTotalSize {
 			a.abortUpload(extractedFiles)
-			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", a.MaxTotalSize)
+			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
 		}
 
 		fileCount++
@@ -141,7 +141,7 @@ func (a *Archiver) sendZipExtracted(prefix, fname string) ([]ExtractedFile, erro
 }
 
 // sends an individual file from zip
-func (a *Archiver) sendZipFile(key string, file *zip.File) (int, error) {
+func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits) (int, error) {
 	mimeType := mime.TypeByExtension(path.Ext(key))
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
@@ -152,7 +152,7 @@ func (a *Archiver) sendZipFile(key string, file *zip.File) (int, error) {
 	bytesRead := 0
 
 	reader, _ := file.Open()
-	limited := limitedReader(reader, a.MaxFileSize, &bytesRead)
+	limited := limitedReader(reader, limits.MaxFileSize, &bytesRead)
 	err := a.StorageClient.PutFile(a.Bucket, key, limited, mimeType)
 
 	if err != nil {
@@ -162,7 +162,7 @@ func (a *Archiver) sendZipFile(key string, file *zip.File) (int, error) {
 	return bytesRead, nil
 }
 
-func (a *Archiver) ExtractZip(key, prefix string) ([]ExtractedFile, error) {
+func (a *Archiver) ExtractZip(key, prefix string, limits *ExtractLimits) ([]ExtractedFile, error) {
 	fname, err := a.fetchZip(key)
 	if err != nil {
 		return nil, err
@@ -170,5 +170,5 @@ func (a *Archiver) ExtractZip(key, prefix string) ([]ExtractedFile, error) {
 
 	defer os.Remove(fname)
 	prefix = path.Join(a.ExtractPrefix, prefix)
-	return a.sendZipExtracted(prefix, fname)
+	return a.sendZipExtracted(prefix, fname, limits)
 }

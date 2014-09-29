@@ -26,6 +26,13 @@ var defaultConfig = Config{
 	MaxFileNameLength: 80,
 }
 
+type ExtractLimits struct {
+	MaxFileSize       int
+	MaxTotalSize      int
+	MaxNumFiles       int
+	MaxFileNameLength int
+}
+
 func LoadConfig(fname string) *Config {
 	jsonBlob, err := ioutil.ReadFile(fname)
 
@@ -50,4 +57,13 @@ func (c *Config) Dump() string {
 	}
 
 	return string(bytes)
+}
+
+func DefaultExtractLimits(config *Config) *ExtractLimits {
+	return &ExtractLimits{
+		MaxFileSize:       config.MaxFileSize,
+		MaxTotalSize:      config.MaxTotalSize,
+		MaxNumFiles:       config.MaxNumFiles,
+		MaxFileNameLength: config.MaxFileNameLength,
+	}
 }

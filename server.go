@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"fmt"
 )
@@ -28,6 +29,20 @@ func getParam(params url.Values, name string) (string, error) {
 	}
 
 	return val, nil
+}
+
+func getIntParam(params url.Values, name string) (int, error) {
+	valStr, err := getParam(params, name)
+	if err != nil {
+		return 0, err
+	}
+
+	valInt, err := strconv.Atoi(valStr)
+	if err != nil {
+		return 0, err
+	}
+
+	return valInt, nil
 }
 
 func writeJSONMessage(w http.ResponseWriter, msg interface{}) error {

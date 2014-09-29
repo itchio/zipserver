@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	. "github.com/leafo/zip_server"
 	"log"
 	"os"
+
+	. "github.com/leafo/zip_server"
 )
 
 var _ fmt.Formatter

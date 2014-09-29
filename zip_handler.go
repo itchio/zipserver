@@ -45,6 +45,40 @@ func releaseKeyLater(key string) {
 	}()
 }
 
+func loadLimits(params url.Values, config *Config) *ExtractLimits {
+	limits := DefaultExtractLimits(config)
+
+	{
+		maxFileSize, err := getIntParam(params, "maxFileSize")
+		if err == nil {
+			limits.MaxFileSize = maxFileSize
+		}
+	}
+
+	{
+		maxTotalSize, err := getIntParam(params, "maxTotalSize")
+		if err == nil {
+			limits.MaxTotalSize = maxTotalSize
+		}
+	}
+
+	{
+		maxNumFiles, err := getIntParam(params, "maxNumFiles")
+		if err == nil {
+			limits.MaxNumFiles = maxNumFiles
+		}
+	}
+
+	{
+		maxFileNameLength, err := getIntParam(params, "maxFileNameLength")
+		if err == nil {
+			limits.MaxFileNameLength = maxFileNameLength
+		}
+	}
+
+	return limits
+}
+
 func zipHandler(w http.ResponseWriter, r *http.Request) error {
 	params := r.URL.Query()
 	key, err := getParam(params, "key")
@@ -61,10 +95,12 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		return writeJSONMessage(w, struct{ Processing bool }{true})
 	}
 
+	limits := loadLimits(params, config)
+
 	process := func() ([]ExtractedFile, error) {
 		lockKey(key)
 		archiver := NewArchiver(config)
-		files, err := archiver.ExtractZip(key, prefix)
+		files, err := archiver.ExtractZip(key, prefix, limits)
 
 		if err != nil {
 			releaseKey(key)
