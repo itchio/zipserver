@@ -18,7 +18,7 @@ zipserver -help
 
 Create a config file:
 
-`zip_server.json`:
+`zipserver.json`:
 
 ```json
 {

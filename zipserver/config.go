@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-var DefaultConfigFname = "zip_server.json"
+var DefaultConfigFname = "zipserver.json"
 
 type Config struct {
 	PrivateKeyPath    string
