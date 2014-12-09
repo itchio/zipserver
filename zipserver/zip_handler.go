@@ -142,8 +142,10 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		log.Print("Notifying " + asyncURL)
-		_, err = http.PostForm(asyncURL, resValues)
-		if err != nil {
+		asyncResponse, err := http.PostForm(asyncURL, resValues)
+		if err == nil {
+			asyncResponse.Body.Close()
+		} else {
 			log.Print("Failed to deliver callback: " + err.Error())
 		}
 	})()
