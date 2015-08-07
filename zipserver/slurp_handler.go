@@ -78,7 +78,11 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		log.Print("ACL: ", acl)
 		log.Print("Content-Disposition: ", contentDisposition)
 
-		storage := NewStorageClient(config)
+		storage, err := NewStorageClient(config)
+
+		if storage == nil {
+			log.Fatal("Failed to create storage:", err)
+		}
 
 		return storage.PutFileWithSetup(config.Bucket, key, body, func(req *http.Request) error {
 			req.Header.Add("Content-Type", contentType)

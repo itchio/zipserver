@@ -10,8 +10,9 @@ import (
 	"os"
 	"path"
 
-	"code.google.com/p/goauth2/oauth"
-	"code.google.com/p/goauth2/oauth/jwt"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"golang.org/x/oauth2/jwt"
 )
 
 var (
@@ -23,58 +24,30 @@ var (
 //   client := NewStorageClient(config)
 //   readCloser, err = client.GetFile("my_bucket", "my_file")
 type StorageClient struct {
-	PrivateKeyPath string
-	ClientEmail    string
-
-	jwtToken   *jwt.Token
-	oauthToken *oauth.Token
+	jwtConfig *jwt.Config
 }
 
-func NewStorageClient(config *Config) *StorageClient {
-	return &StorageClient{
-		PrivateKeyPath: config.PrivateKeyPath,
-		ClientEmail:    config.ClientEmail,
-	}
-}
-
-func (c *StorageClient) refreshTokenIfNecessary() error {
-	if c.oauthToken == nil || c.oauthToken.Expired() {
-		return c.refreshToken()
-	}
-
-	return nil
-}
-
-func (c *StorageClient) refreshToken() error {
-	if c.jwtToken == nil {
-		pemBytes, err := ioutil.ReadFile(c.PrivateKeyPath)
-
-		if err != nil {
-			return err
-		}
-
-		c.jwtToken = jwt.NewToken(c.ClientEmail, scope, pemBytes)
-	}
-
-	newToken, err := c.jwtToken.Assert(&http.Client{})
-
-	if err != nil {
-		return err
-	}
-
-	c.oauthToken = newToken
-	return nil
-}
-
-func (c *StorageClient) httpClient() (*http.Client, error) {
-	err := c.refreshTokenIfNecessary()
+func NewStorageClient(config *Config) (*StorageClient, error) {
+	pemBytes, err := ioutil.ReadFile(config.PrivateKeyPath)
 
 	if err != nil {
 		return nil, err
 	}
 
-	transport := &oauth.Transport{nil, c.oauthToken, nil}
-	return transport.Client(), nil
+	jwtConfig := &jwt.Config{
+		Email:      config.ClientEmail,
+		PrivateKey: pemBytes,
+		TokenURL:   google.JWTTokenURL,
+		Scopes:     []string{scope},
+	}
+
+	return &StorageClient{
+		jwtConfig: jwtConfig,
+	}, nil
+}
+
+func (c *StorageClient) httpClient() (*http.Client, error) {
+	return c.jwtConfig.Client(oauth2.NoContext), nil
 }
 
 func (c *StorageClient) url(bucket, key, logName string) string {

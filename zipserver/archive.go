@@ -29,7 +29,12 @@ type ExtractedFile struct {
 }
 
 func NewArchiver(config *Config) *Archiver {
-	storage := NewStorageClient(config)
+	storage, err := NewStorageClient(config)
+
+	if storage == nil {
+		log.Fatal("Failed to create storage:", err)
+	}
+
 	return &Archiver{storage, config}
 }
 
