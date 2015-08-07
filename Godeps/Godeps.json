@@ -3,9 +3,20 @@
 	"GoVersion": "go1.4.2",
 	"Deps": [
 		{
-			"ImportPath": "code.google.com/p/goauth2/oauth",
-			"Comment": "weekly-39",
-			"Rev": "8eeae4635bf69ddb3c57a9ce0c22d344aef62636"
+			"ImportPath": "golang.org/x/net/context",
+			"Rev": "67f25490433376b5f7da086c0b9283fcdeca3a7b"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2",
+			"Rev": "8914e5017ca260f2a3a1575b1e6868874050d95e"
+		},
+		{
+			"ImportPath": "google.golang.org/cloud/compute/metadata",
+			"Rev": "44a4e998d83d85d2c9bf42770211ea3dad869358"
+		},
+		{
+			"ImportPath": "google.golang.org/cloud/internal",
+			"Rev": "44a4e998d83d85d2c9bf42770211ea3dad869358"
 		}
 	]
 }
