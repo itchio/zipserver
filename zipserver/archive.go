@@ -117,6 +117,10 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 			continue
 		}
 
+		if strings.Contains(file.Name, "__MACOSX/") {
+			continue
+		}
+
 		if path.IsAbs(file.Name) {
 			continue
 		}
