@@ -1,6 +1,7 @@
 {
 	"ImportPath": "github.com/leafo/zipserver",
-	"GoVersion": "go1.4.2",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v74",
 	"Deps": [
 		{
 			"ImportPath": "golang.org/x/net/context",
@@ -8,6 +9,22 @@
 		},
 		{
 			"ImportPath": "golang.org/x/oauth2",
+			"Rev": "8914e5017ca260f2a3a1575b1e6868874050d95e"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/google",
+			"Rev": "8914e5017ca260f2a3a1575b1e6868874050d95e"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/internal",
+			"Rev": "8914e5017ca260f2a3a1575b1e6868874050d95e"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/jws",
+			"Rev": "8914e5017ca260f2a3a1575b1e6868874050d95e"
+		},
+		{
+			"ImportPath": "golang.org/x/oauth2/jwt",
 			"Rev": "8914e5017ca260f2a3a1575b1e6868874050d95e"
 		},
 		{
