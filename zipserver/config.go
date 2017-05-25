@@ -17,6 +17,7 @@ type Config struct {
 	MaxTotalSize      int
 	MaxNumFiles       int
 	MaxFileNameLength int
+	ExtractionThreads int
 }
 
 var defaultConfig = Config{
@@ -24,6 +25,7 @@ var defaultConfig = Config{
 	MaxTotalSize:      1024 * 1024 * 500,
 	MaxNumFiles:       100,
 	MaxFileNameLength: 80,
+	ExtractionThreads: 4,
 }
 
 type ExtractLimits struct {
@@ -31,6 +33,7 @@ type ExtractLimits struct {
 	MaxTotalSize      int
 	MaxNumFiles       int
 	MaxFileNameLength int
+	ExtractionThreads int
 }
 
 func LoadConfig(fname string) *Config {
@@ -65,5 +68,6 @@ func DefaultExtractLimits(config *Config) *ExtractLimits {
 		MaxTotalSize:      config.MaxTotalSize,
 		MaxNumFiles:       config.MaxNumFiles,
 		MaxFileNameLength: config.MaxFileNameLength,
+		ExtractionThreads: config.ExtractionThreads,
 	}
 }
