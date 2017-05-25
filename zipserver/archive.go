@@ -21,6 +21,7 @@ var (
 type Archiver struct {
 	*StorageClient
 	*Config
+	Aborted bool
 }
 
 type ExtractedFile struct {
@@ -35,7 +36,7 @@ func NewArchiver(config *Config) *Archiver {
 		log.Fatal("Failed to create storage:", err)
 	}
 
-	return &Archiver{storage, config}
+	return &Archiver{storage, config, false}
 }
 
 func (a *Archiver) fetchZip(key string) (string, error) {
@@ -72,11 +73,61 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 
 // delete all files that have been uploaded so far
 func (a *Archiver) abortUpload(files []ExtractedFile) error {
+	a.Aborted = true
+
 	for _, file := range files {
 		a.StorageClient.DeleteFile(a.Bucket, file.Key)
 	}
 
 	return nil
+}
+
+func shouldIgnoreFile(fname string) bool {
+	if strings.HasSuffix(fname, "/") {
+		return true
+	}
+
+	if strings.Contains(fname, "..") {
+		return true
+	}
+
+	if strings.Contains(fname, "__MACOSX/") {
+		return true
+	}
+
+	if path.IsAbs(fname) {
+		return true
+	}
+
+	return false
+}
+
+type UploadFileTask struct {
+	File *zip.File
+	Key  string
+}
+
+type UploadFileResult struct {
+	Error bool
+	Key   string
+	Size  int
+}
+
+func uploadWorker(a *Archiver, limits *ExtractLimits, files <-chan *UploadFileTask, results chan<- UploadFileResult) {
+	for task := range files {
+		file := task.File
+		key := task.Key
+
+		written, err := a.sendZipFile(key, file, limits)
+
+		if err != nil {
+			log.Print("Failed sending: " + key + " " + err.Error())
+			results <- UploadFileResult{true, key, 0}
+			return
+		}
+
+		results <- UploadFileResult{false, key, written}
+	}
 }
 
 // extracts and sends all files to prefix
@@ -96,9 +147,14 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 	defer zipReader.Close()
 
 	fileCount := 0
-	byteCount := 0
+	byteCount := uint64(0)
+	uploadedCount := 0
 
 	for _, file := range zipReader.File {
+		if shouldIgnoreFile(file.Name) {
+			continue
+		}
+
 		if len(file.Name) > limits.MaxFileNameLength {
 			return nil, fmt.Errorf("Zip contains file paths that are too long")
 		}
@@ -106,44 +162,53 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 		if file.UncompressedSize64 > uint64(limits.MaxFileSize) {
 			return nil, fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
 		}
+
+		byteCount += file.UncompressedSize64
+
+		if byteCount > uint64(limits.MaxTotalSize) {
+			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
+		}
+	}
+
+	files := make(chan *UploadFileTask, len(zipReader.File))
+	results := make(chan UploadFileResult, len(zipReader.File))
+
+	for i := 1; i <= 8; i++ {
+		go uploadWorker(a, limits, files, results)
 	}
 
 	for _, file := range zipReader.File {
-		if strings.HasSuffix(file.Name, "/") {
-			continue
-		}
-
-		if strings.Contains(file.Name, "..") {
-			continue
-		}
-
-		if strings.Contains(file.Name, "__MACOSX/") {
-			continue
-		}
-
-		if path.IsAbs(file.Name) {
+		if shouldIgnoreFile(file.Name) {
 			continue
 		}
 
 		key := path.Join(prefix, file.Name)
-		written, err := a.sendZipFile(key, file, limits)
+		files <- &UploadFileTask{file, key}
+	}
 
-		if err != nil {
-			log.Print("Failed sending: " + key + " " + err.Error())
+	for i := 0; i < len(zipReader.File); i++ {
+		result := <-results
+
+		if result.Error {
 			a.abortUpload(extractedFiles)
+			close(files)
 			return nil, err
 		}
 
-		extractedFiles = append(extractedFiles, ExtractedFile{key, int(written)})
-		byteCount += written
+		extractedFiles = append(extractedFiles, ExtractedFile{result.Key, result.Size})
+		uploadedCount += result.Size
 
-		if byteCount > limits.MaxTotalSize {
+		if uploadedCount > limits.MaxTotalSize {
 			a.abortUpload(extractedFiles)
+			close(files)
 			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
 		}
 
 		fileCount++
 	}
+
+	close(files)
+	close(results)
 
 	log.Printf("Sent %d files", fileCount)
 	return extractedFiles, nil
@@ -151,6 +216,10 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 
 // sends an individual file from zip
 func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits) (int, error) {
+	if (a.Aborted) {
+		return 0, fmt.Errorf("Archive upload has been aborted")
+	}
+
 	mimeType := mime.TypeByExtension(path.Ext(key))
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
