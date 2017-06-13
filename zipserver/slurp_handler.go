@@ -27,9 +27,9 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	acl := params.Get("acl")
 	contentDisposition := params.Get("content_disposition")
 
-	maxBytes := 0
+	maxBytes := uint64(0)
 	if maxBytesStr != "" {
-		maxBytes, err = strconv.Atoi(maxBytesStr)
+		maxBytes, err = strconv.ParseUint(maxBytesStr, 10, 64)
 		if err != nil {
 			return err
 		}
@@ -63,14 +63,14 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		contentLengthStr := res.Header.Get("Content-Length")
 		if maxBytes > 0 {
 			if contentLengthStr != "" {
-				contentLength, err := strconv.Atoi(contentLengthStr)
+				contentLength, err := strconv.ParseUint(contentLengthStr, 10, 64)
 				if err == nil && contentLength > maxBytes {
 					return fmt.Errorf("Content-Length is greater than max bytes (%d > %d)",
 						contentLength, maxBytes)
 				}
 			}
 
-			bytesRead := 0
+			bytesRead := uint64(0)
 			body = limitedReader(body, maxBytes, &bytesRead)
 		}
 
