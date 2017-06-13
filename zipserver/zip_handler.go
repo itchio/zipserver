@@ -49,14 +49,14 @@ func loadLimits(params url.Values, config *Config) *ExtractLimits {
 	limits := DefaultExtractLimits(config)
 
 	{
-		maxFileSize, err := getIntParam(params, "maxFileSize")
+		maxFileSize, err := getUint64Param(params, "maxFileSize")
 		if err == nil {
 			limits.MaxFileSize = maxFileSize
 		}
 	}
 
 	{
-		maxTotalSize, err := getIntParam(params, "maxTotalSize")
+		maxTotalSize, err := getUint64Param(params, "maxTotalSize")
 		if err == nil {
 			limits.MaxTotalSize = maxTotalSize
 		}

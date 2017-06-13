@@ -31,6 +31,20 @@ func getParam(params url.Values, name string) (string, error) {
 	return val, nil
 }
 
+func getUint64Param(params url.Values, name string) (uint64, error) {
+	valStr, err := getParam(params, name)
+	if err != nil {
+		return 0, err
+	}
+
+	valUint64, err := strconv.ParseUint(valStr, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return valUint64, nil
+}
+
 func getIntParam(params url.Values, name string) (int, error) {
 	valStr, err := getParam(params, name)
 	if err != nil {

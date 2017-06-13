@@ -13,8 +13,8 @@ type Config struct {
 	ClientEmail       string
 	Bucket            string
 	ExtractPrefix     string
-	MaxFileSize       int
-	MaxTotalSize      int
+	MaxFileSize       uint64
+	MaxTotalSize      uint64
 	MaxNumFiles       int
 	MaxFileNameLength int
 	ExtractionThreads int
@@ -29,8 +29,8 @@ var defaultConfig = Config{
 }
 
 type ExtractLimits struct {
-	MaxFileSize       int
-	MaxTotalSize      int
+	MaxFileSize       uint64
+	MaxTotalSize      uint64
 	MaxNumFiles       int
 	MaxFileNameLength int
 	ExtractionThreads int
