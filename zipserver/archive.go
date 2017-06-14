@@ -146,7 +146,7 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 	defer zipReader.Close()
 
 	fileCount := 0
-	byteCount := uint64(0)
+	var byteCount uint64
 
 	fileList := []*zip.File{}
 
@@ -172,18 +172,19 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 		fileList = append(fileList, file)
 	}
 
-	tasks := make(chan UploadFileTask, limits.ExtractionThreads)
-	results := make(chan UploadFileResult, limits.ExtractionThreads)
-	cancel := make(chan struct{}, limits.ExtractionThreads)
+	tasks := make(chan UploadFileTask)
+	results := make(chan UploadFileResult)
+	cancel := make(chan struct{})
 	done := make(chan struct{}, limits.ExtractionThreads)
 
-	for i := 1; i <= limits.ExtractionThreads; i++ {
+	for i := 0; i < limits.ExtractionThreads; i++ {
 		go uploadWorker(a, limits, tasks, results, cancel, done)
 	}
 
 	activeWorkers := limits.ExtractionThreads
 
 	go func() {
+		defer func() { close(tasks) }()
 		for _, file := range fileList {
 			key := path.Join(prefix, file.Name)
 			task := UploadFileTask{file, key}
@@ -191,39 +192,38 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 				case tasks <- task:
 				case <-cancel:
 					// Something went wrong!
-					close(tasks)
 					return
 			}
 		}
-		close(tasks)
 	}()
 
-	extractError := error(nil)
+	var extractError error
 
-	collectResults: for {
+	for activeWorkers > 0 {
 		select {
 			case result := <- results:
 				if result.Error != nil {
 					extractError = result.Error
 					close(cancel)
-					// Wait until everything is done uploading before removing stuff on the server
-					defer func() { a.abortUpload(extractedFiles) }()
 				} else {
 					extractedFiles = append(extractedFiles, ExtractedFile{result.Key, result.Size})
 					fileCount++
 				}
 			case <- done:
 				activeWorkers--
-				if activeWorkers <= 0 {
-					break collectResults
-				}
 		}
 	}
 
 	close(results)
 
+	if extractError != nil {
+		log.Printf("Upload error: %s", extractError.Error());
+		a.abortUpload(extractedFiles)
+		return nil, extractError
+	}
+
 	log.Printf("Sent %d files", fileCount)
-	return extractedFiles, extractError
+	return extractedFiles, nil
 }
 
 // sends an individual file from zip
@@ -235,7 +235,7 @@ func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits
 
 	log.Print("Sending: " + key + " (" + mimeType + ")")
 
-	bytesRead := uint64(0)
+	var bytesRead uint64
 
 	reader, _ := file.Open()
 	limited := limitedReader(reader, file.UncompressedSize64, &bytesRead)

@@ -27,7 +27,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	acl := params.Get("acl")
 	contentDisposition := params.Get("content_disposition")
 
-	maxBytes := uint64(0)
+	var maxBytes uint64
 	if maxBytesStr != "" {
 		maxBytes, err = strconv.ParseUint(maxBytesStr, 10, 64)
 		if err != nil {
@@ -60,21 +60,17 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 
 		body := io.Reader(res.Body)
 
-		contentLengthStr := res.Header.Get("Content-Length")
 		if maxBytes > 0 {
-			if contentLengthStr != "" {
-				contentLength, err := strconv.ParseUint(contentLengthStr, 10, 64)
-				if err == nil && contentLength > maxBytes {
-					return fmt.Errorf("Content-Length is greater than max bytes (%d > %d)",
-						contentLength, maxBytes)
-				}
+			if uint64(res.ContentLength) > maxBytes {
+				return fmt.Errorf("Content-Length is greater than max bytes (%d > %d)",
+					res.ContentLength, maxBytes)
 			}
 
-			bytesRead := uint64(0)
+			var bytesRead uint64
 			body = limitedReader(body, maxBytes, &bytesRead)
 		}
 
-		log.Print("Uploading ", contentType, " (size: ", contentLengthStr, ") to ", key)
+		log.Print("Uploading ", contentType, " (size: ", res.Header.Get("Content-Length"), ") to ", key)
 		log.Print("ACL: ", acl)
 		log.Print("Content-Disposition: ", contentDisposition)
 
