@@ -70,7 +70,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 			body = limitedReader(body, maxBytes, &bytesRead)
 		}
 
-		log.Print("Uploading ", contentType, " (size: ", res.Header.Get("Content-Length"), ") to ", key)
+		log.Print("Uploading ", contentType, " (size: ", res.ContentLength, ") to ", key)
 		log.Print("ACL: ", acl)
 		log.Print("Content-Disposition: ", contentDisposition)
 
