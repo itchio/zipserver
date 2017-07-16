@@ -189,10 +189,10 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 			key := path.Join(prefix, file.Name)
 			task := UploadFileTask{file, key}
 			select {
-				case tasks <- task:
-				case <-cancel:
-					// Something went wrong!
-					return
+			case tasks <- task:
+			case <-cancel:
+				// Something went wrong!
+				return
 			}
 		}
 	}()
@@ -201,23 +201,23 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 
 	for activeWorkers > 0 {
 		select {
-			case result := <- results:
-				if result.Error != nil {
-					extractError = result.Error
-					close(cancel)
-				} else {
-					extractedFiles = append(extractedFiles, ExtractedFile{result.Key, result.Size})
-					fileCount++
-				}
-			case <- done:
-				activeWorkers--
+		case result := <-results:
+			if result.Error != nil {
+				extractError = result.Error
+				close(cancel)
+			} else {
+				extractedFiles = append(extractedFiles, ExtractedFile{result.Key, result.Size})
+				fileCount++
+			}
+		case <-done:
+			activeWorkers--
 		}
 	}
 
 	close(results)
 
 	if extractError != nil {
-		log.Printf("Upload error: %s", extractError.Error());
+		log.Printf("Upload error: %s", extractError.Error())
 		a.abortUpload(extractedFiles)
 		return nil, extractError
 	}
