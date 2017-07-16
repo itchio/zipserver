@@ -11,6 +11,7 @@ func TestExtractZip(t *testing.T) {
 		MaxTotalSize:      1024 * 1024 * 500,
 		MaxNumFiles:       100,
 		MaxFileNameLength: 80,
+		ExtractionThreads: 4,
 	}
 
 	err := client.PutFileFromFname(config.Bucket, "zipserver_test/test.zip", "/home/leafo/code/go/etlua.zip")
