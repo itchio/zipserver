@@ -19,10 +19,10 @@ var (
 	tmpDir = "zip_tmp"
 )
 
-// Archiver holds together the GCS client along with configuration values
+// Archiver holds together the storage along with configuration values
 // (credentials, limits etc.)
 type Archiver struct {
-	*StorageClient
+	Storage
 	*Config
 }
 
@@ -34,7 +34,7 @@ type ExtractedFile struct {
 
 // NewArchiver creates a new archiver from the given config
 func NewArchiver(config *Config) *Archiver {
-	storage, err := NewStorageClient(config)
+	storage, err := NewGcsStorage(config)
 
 	if storage == nil {
 		log.Fatal("Failed to create storage:", err)
@@ -51,7 +51,7 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 	fname := a.Bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
 	fname = path.Join(tmpDir, fname)
 
-	src, err := a.StorageClient.GetFile(a.Bucket, key)
+	src, err := a.Storage.GetFile(a.Bucket, key)
 
 	if err != nil {
 		return "", err
@@ -78,7 +78,8 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 // delete all files that have been uploaded so far
 func (a *Archiver) abortUpload(files []ExtractedFile) error {
 	for _, file := range files {
-		a.StorageClient.DeleteFile(a.Bucket, file.Key)
+		// FIXME: code quality - what if we fail here? any retry strategies?
+		a.Storage.DeleteFile(a.Bucket, file.Key)
 	}
 
 	return nil
@@ -262,8 +263,8 @@ func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits
 	var bytesRead uint64
 
 	limited := limitedReader(reader, file.UncompressedSize64, &bytesRead)
-	err = a.StorageClient.PutFile(a.Bucket, key, limited, mimeType)
 
+	err = a.Storage.PutFile(a.Bucket, key, limited, mimeType)
 	if err != nil {
 		return bytesRead, err
 	}
