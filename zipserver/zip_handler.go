@@ -6,43 +6,40 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
-	"time"
 )
 
 var shared struct {
+	// maps aren't thread-safe in golang, this protects openKeys
 	sync.Mutex
-	openKeys map[string]bool
+	openKeys map[string]interface{}
 }
 
 func init() {
-	shared.openKeys = make(map[string]bool)
+	shared.openKeys = make(map[string]interface{})
 }
 
-func keyBusy(key string) bool {
+// tryLockKey tries acquiring the lock for a given key
+// it returns true if we successfully acquired the lock,
+// false if the key is locked by someone else
+func tryLockKey(key string) bool {
 	shared.Lock()
 	defer shared.Unlock()
-	return shared.openKeys[key]
-}
 
-func lockKey(key string) {
-	shared.Lock()
-	defer shared.Unlock()
-	shared.openKeys[key] = true
+	// test for key existence
+	if _, ok := shared.openKeys[key]; ok {
+		// locked by someone else
+		return false
+	}
+	shared.openKeys[key] = nil
+	return true
 }
 
 func releaseKey(key string) {
 	shared.Lock()
 	defer shared.Unlock()
-	shared.openKeys[key] = false
-}
 
-// release the key later to give the initial requester time to update the
-// database
-func releaseKeyLater(key string) {
-	go func() {
-		<-time.After(10 * time.Second)
-		releaseKey(key)
-	}()
+	// delete key from map so the map doesn't keep growing
+	delete(shared.openKeys, key)
 }
 
 func loadLimits(params url.Values, config *Config) *ExtractLimits {
@@ -91,28 +88,26 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	if keyBusy(key) {
+	hasLock := tryLockKey(key)
+	if !hasLock {
+		// already being extracted in another handler, ask consumer to wait
 		return writeJSONMessage(w, struct{ Processing bool }{true})
 	}
 
 	limits := loadLimits(params, config)
 
 	process := func() ([]ExtractedFile, error) {
-		lockKey(key)
 		archiver := NewArchiver(config)
 		files, err := archiver.ExtractZip(key, prefix, limits)
-
-		if err != nil {
-			releaseKey(key)
-		} else {
-			releaseKeyLater(key)
-		}
 
 		return files, err
 	}
 
+	// sync codepath
 	asyncURL := params.Get("async")
 	if asyncURL == "" {
+		defer releaseKey(key)
+
 		extracted, err := process()
 		if err != nil {
 			return writeJSONError(w, "ExtractError", err)
@@ -124,7 +119,10 @@ func zipHandler(w http.ResponseWriter, r *http.Request) error {
 		}{true, extracted})
 	}
 
+	// async codepath
 	go (func() {
+		defer releaseKey(key)
+
 		extracted, err := process()
 		resValues := url.Values{}
 
