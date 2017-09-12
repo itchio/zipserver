@@ -77,7 +77,7 @@ func loadLimits(params url.Values, config *Config) *ExtractLimits {
 	return limits
 }
 
-func zipHandler(w http.ResponseWriter, r *http.Request) error {
+func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	params := r.URL.Query()
 	key, err := getParam(params, "key")
 	if err != nil {
