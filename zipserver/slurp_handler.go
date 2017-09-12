@@ -17,7 +17,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	slurp_url, err := getParam(params, "url")
+	slurpURL, err := getParam(params, "url")
 	if err != nil {
 		return err
 	}
@@ -36,9 +36,9 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	process := func() error {
-		log.Print("Fetching URL: ", slurp_url)
+		log.Print("Fetching URL: ", slurpURL)
 		client := http.Client{}
-		res, err := client.Get(slurp_url)
+		res, err := client.Get(slurpURL)
 
 		if err != nil {
 			return err
