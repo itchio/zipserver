@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/leafo/zipserver.svg?branch=master)](https://travis-ci.org/leafo/zipserver)
+
 # zipserver
 
 Zip server is an HTTP service that takes a key to a zip file on Google Cloud
