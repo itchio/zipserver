@@ -14,6 +14,7 @@ import (
 	"archive/zip"
 
 	"camlistore.org/pkg/magic"
+	errors "github.com/go-errors/errors"
 )
 
 var (
@@ -55,7 +56,7 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 	src, err := a.Storage.GetFile(a.Bucket, key)
 
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, 0)
 	}
 
 	defer src.Close()
@@ -63,14 +64,14 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 	dest, err := os.Create(fname)
 
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, 0)
 	}
 
 	defer dest.Close()
 
 	_, err = io.Copy(dest, src)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, 0)
 	}
 
 	return fname, nil
@@ -127,7 +128,9 @@ func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTas
 		file := task.File
 		key := task.Key
 
-		written, err := a.sendZipFile(key, file, limits)
+		// old Unity versions expect you to serve `.memgz` files as `.mem` with
+		// `Content-Encoding: gzip`, so the out key might not be the same as the key
+		written, outKey, err := a.sendZipFile(key, file, limits)
 
 		if err != nil {
 			log.Print("Failed sending " + key + ": " + err.Error())
@@ -135,7 +138,7 @@ func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTas
 			return
 		}
 
-		results <- UploadFileResult{nil, key, written}
+		results <- UploadFileResult{nil, outKey, written}
 	}
 }
 
@@ -143,12 +146,13 @@ func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTas
 func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits) ([]ExtractedFile, error) {
 	zipReader, err := zip.OpenReader(fname)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, 0)
 	}
 
 	if len(zipReader.File) > limits.MaxNumFiles {
-		return nil, fmt.Errorf("Too many files in zip (%v > %v)",
+		err := fmt.Errorf("Too many files in zip (%v > %v)",
 			len(zipReader.File), limits.MaxNumFiles)
+		return nil, errors.Wrap(err, 0)
 	}
 
 	extractedFiles := []ExtractedFile{}
@@ -166,17 +170,20 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 		}
 
 		if len(file.Name) > limits.MaxFileNameLength {
-			return nil, fmt.Errorf("Zip contains file paths that are too long")
+			err := fmt.Errorf("Zip contains file paths that are too long")
+			return nil, errors.Wrap(err, 0)
 		}
 
 		if file.UncompressedSize64 > limits.MaxFileSize {
-			return nil, fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
+			err := fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
+			return nil, errors.Wrap(err, 0)
 		}
 
 		byteCount += file.UncompressedSize64
 
 		if byteCount > limits.MaxTotalSize {
-			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
+			err := fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
+			return nil, errors.Wrap(err, 0)
 		}
 
 		fileList = append(fileList, file)
@@ -236,11 +243,17 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 	return extractedFiles, nil
 }
 
+var oldUnitySuffixes = []string{
+	"jsgz",
+	"datagz",
+	"memgz",
+}
+
 // sends an individual file from zip
-func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits) (uint64, error) {
+func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits) (uint64, string, error) {
 	readerCloser, err := file.Open()
 	if err != nil {
-		return 0, err
+		return 0, key, err
 	}
 	defer readerCloser.Close()
 
@@ -259,26 +272,37 @@ func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits
 		mimeType = "application/octet-stream"
 	}
 
-	log.Print("Sending: " + key + " (" + mimeType + ")")
-
 	var bytesRead uint64
 
 	limited := limitedReader(reader, file.UncompressedSize64, &bytesRead)
 
-	err = a.Storage.PutFileWithSetup(a.Bucket, key, limited, func(req *http.Request) error {
-		if mimeType == "application/gzip" {
-			req.Header.Set("content-encoding", "gzip")
-			req.Header.Set("content-type", "application/octet-stream")
-		} else {
-			req.Header.Set("content-type", mimeType)
+	contentEncoding := ""
+	if mimeType == "application/gzip" {
+		contentEncoding = "gzip"
+		mimeType = "application/octet-stream"
+
+		for _, suffix := range oldUnitySuffixes {
+			if strings.HasSuffix(key, suffix) {
+				key = strings.TrimSuffix(key, "gz")
+				break
+			}
 		}
+	}
+
+	log.Printf("Sending: %s (%s)", key, mimeType)
+
+	err = a.Storage.PutFileWithSetup(a.Bucket, key, limited, func(req *http.Request) error {
+		if contentEncoding != "" {
+			req.Header.Set("content-encoding", contentEncoding)
+		}
+		req.Header.Set("content-type", mimeType)
 		return nil
 	})
 	if err != nil {
-		return bytesRead, err
+		return bytesRead, key, err
 	}
 
-	return bytesRead, nil
+	return bytesRead, key, nil
 }
 
 // ExtractZip downloads the zip at `key` to a temporary file,

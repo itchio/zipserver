@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sync"
+
+	errors "github.com/go-errors/errors"
 )
 
 type memObject struct {
@@ -46,7 +48,8 @@ func (fs *MemStorage) GetFile(bucket, key string) (io.ReadCloser, error) {
 		return ioutil.NopCloser(bytes.NewReader(obj.data)), nil
 	}
 
-	return nil, fmt.Errorf("%s: object not found", objectPath)
+	err := fmt.Errorf("%s: object not found", objectPath)
+	return nil, errors.Wrap(err, 0)
 }
 
 func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
@@ -59,7 +62,8 @@ func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
 		return obj.headers, nil
 	}
 
-	return nil, fmt.Errorf("%s: object not found", objectPath)
+	err := fmt.Errorf("%s: object not found", objectPath)
+	return nil, errors.Wrap(err, 0)
 }
 
 // PutFile implements Storage.PutFile for FsStorage
@@ -77,17 +81,17 @@ func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, s
 
 	req, err := http.NewRequest("PUT", "http://127.0.0.1/dummy", nil)
 	if err != nil {
-		return err
+		return errors.Wrap(err, 0)
 	}
 
 	err = setup(req)
 	if err != nil {
-		return err
+		return errors.Wrap(err, 0)
 	}
 
 	data, err := ioutil.ReadAll(contents)
 	if err != nil {
-		return err
+		return errors.Wrap(err, 0)
 	}
 
 	objectPath := fs.objectPath(bucket, key)
