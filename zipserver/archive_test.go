@@ -47,6 +47,7 @@ func Test_ExtractOnGCS(t *testing.T) {
 
 type zipEntry struct {
 	name                    string
+	outName                 string
 	data                    []byte
 	expectedMimeType        string
 	expectedContentEncoding string
@@ -72,7 +73,12 @@ func (zl *zipLayout) Write(t *testing.T, zw *zip.Writer) {
 func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix string) {
 	for _, entry := range zl.entries {
 		func() {
-			path := fmt.Sprintf("%s/%s", prefix, entry.name)
+			name := entry.name
+			if entry.outName != "" {
+				name = entry.outName
+			}
+
+			path := fmt.Sprintf("%s/%s", prefix, name)
 			reader, err := storage.GetFile(bucket, path)
 			assert.NoError(t, err)
 
@@ -125,6 +131,34 @@ func Test_ExtractInMemory(t *testing.T) {
 			},
 			zipEntry{
 				name:                    "gzip-without-extension",
+				data:                    []byte{0x1F, 0x8B, 0x08, 9, 1, 5, 2, 3, 5, 2, 6, 4, 4},
+				expectedMimeType:        "application/octet-stream",
+				expectedContentEncoding: "gzip",
+			},
+			zipEntry{
+				name:                    "gamedata.memgz",
+				outName:                 "gamedata.mem",
+				data:                    []byte{0x1F, 0x8B, 0x08, 9, 1, 5, 2, 3, 5, 2, 6, 4, 4},
+				expectedMimeType:        "application/octet-stream",
+				expectedContentEncoding: "gzip",
+			},
+			zipEntry{
+				name:                    "gamedata.jsgz",
+				outName:                 "gamedata.js",
+				data:                    []byte{0x1F, 0x8B, 0x08, 9, 1, 5, 2, 3, 5, 2, 6, 4, 4},
+				expectedMimeType:        "application/octet-stream",
+				expectedContentEncoding: "gzip",
+			},
+			zipEntry{
+				name:                    "gamedata.asm.jsgz",
+				outName:                 "gamedata.asm.js",
+				data:                    []byte{0x1F, 0x8B, 0x08, 9, 1, 5, 2, 3, 5, 2, 6, 4, 4},
+				expectedMimeType:        "application/octet-stream",
+				expectedContentEncoding: "gzip",
+			},
+			zipEntry{
+				name:                    "gamedata.datagz",
+				outName:                 "gamedata.data",
 				data:                    []byte{0x1F, 0x8B, 0x08, 9, 1, 5, 2, 3, 5, 2, 6, 4, 4},
 				expectedMimeType:        "application/octet-stream",
 				expectedContentEncoding: "gzip",
