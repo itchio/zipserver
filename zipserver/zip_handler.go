@@ -11,11 +11,12 @@ import (
 var shared struct {
 	// maps aren't thread-safe in golang, this protects openKeys
 	sync.Mutex
-	openKeys map[string]interface{}
+	// empty struct is zero-width, we're using that map as a set (no values)
+	openKeys map[string]struct{}
 }
 
 func init() {
-	shared.openKeys = make(map[string]interface{})
+	shared.openKeys = make(map[string]struct{})
 }
 
 // tryLockKey tries acquiring the lock for a given key
@@ -30,7 +31,7 @@ func tryLockKey(key string) bool {
 		// locked by someone else
 		return false
 	}
-	shared.openKeys[key] = nil
+	shared.openKeys[key] = struct{}{}
 	return true
 }
 
