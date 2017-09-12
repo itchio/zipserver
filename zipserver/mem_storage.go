@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sync"
+	"time"
 
 	errors "github.com/go-errors/errors"
 )
@@ -19,8 +20,10 @@ type memObject struct {
 // MemStorage implements Storage on a directory
 // it stores things in `baseDir/bucket/prefix...`
 type MemStorage struct {
-	mutex   sync.Mutex
-	objects map[string]memObject
+	mutex        sync.Mutex
+	objects      map[string]memObject
+	failingPaths map[string]struct{}
+	putDelay     time.Duration
 }
 
 // interface guard
@@ -29,7 +32,8 @@ var _ Storage = (*MemStorage)(nil)
 // NewMemStorage creates a new fs storage working in the given directory
 func NewMemStorage() (*MemStorage, error) {
 	return &MemStorage{
-		objects: make(map[string]memObject),
+		objects:      make(map[string]memObject),
+		failingPaths: make(map[string]struct{}),
 	}, nil
 }
 
@@ -79,6 +83,13 @@ func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, s
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
+	objectPath := fs.objectPath(bucket, key)
+	if _, ok := fs.failingPaths[objectPath]; ok {
+		return errors.Wrap(errors.New("intentional failure"), 0)
+	}
+
+	time.Sleep(fs.putDelay)
+
 	req, err := http.NewRequest("PUT", "http://127.0.0.1/dummy", nil)
 	if err != nil {
 		return errors.Wrap(err, 0)
@@ -94,7 +105,6 @@ func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, s
 		return errors.Wrap(err, 0)
 	}
 
-	objectPath := fs.objectPath(bucket, key)
 	fs.objects[objectPath] = memObject{
 		data,
 		req.Header,
@@ -110,4 +120,13 @@ func (fs *MemStorage) DeleteFile(bucket, key string) error {
 
 	delete(fs.objects, fs.objectPath(bucket, key))
 	return nil
+}
+
+func (fs *MemStorage) planForFailure(bucket, key string) {
+	fs.mutex.Lock()
+	defer fs.mutex.Unlock()
+
+	objectPath := fs.objectPath(bucket, key)
+
+	fs.failingPaths[objectPath] = struct{}{}
 }
