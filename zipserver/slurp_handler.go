@@ -74,7 +74,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		log.Print("ACL: ", acl)
 		log.Print("Content-Disposition: ", contentDisposition)
 
-		storage, err := NewStorageClient(config)
+		storage, err := NewGcsStorage(config)
 
 		if storage == nil {
 			log.Fatal("Failed to create storage:", err)

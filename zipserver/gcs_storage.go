@@ -20,17 +20,20 @@ var (
 	scope   = "https://www.googleapis.com/auth/devstorage.full_control"
 )
 
-// StorageClient is a simple interface to Google Cloud Storage
+// GcsStorage is a simple interface to Google Cloud Storage
 //
 // Example usage:
-//   client := NewStorageClient(config)
-//   readCloser, err = client.GetFile("my_bucket", "my_file")
-type StorageClient struct {
+//   storage := NewStorageClient(config)
+//   readCloser, err = storage.GetFile("my_bucket", "my_file")
+type GcsStorage struct {
 	jwtConfig *jwt.Config
 }
 
-// NewStorageClient returns a new GCS storage client
-func NewStorageClient(config *Config) (*StorageClient, error) {
+// interface guard
+var _ Storage = (*GcsStorage)(nil)
+
+// NewGcsStorage returns a new GCS-backed storage
+func NewGcsStorage(config *Config) (*GcsStorage, error) {
 	pemBytes, err := ioutil.ReadFile(config.PrivateKeyPath)
 
 	if err != nil {
@@ -44,16 +47,16 @@ func NewStorageClient(config *Config) (*StorageClient, error) {
 		Scopes:     []string{scope},
 	}
 
-	return &StorageClient{
+	return &GcsStorage{
 		jwtConfig: jwtConfig,
 	}, nil
 }
 
-func (c *StorageClient) httpClient() (*http.Client, error) {
+func (c *GcsStorage) httpClient() (*http.Client, error) {
 	return c.jwtConfig.Client(oauth2.NoContext), nil
 }
 
-func (c *StorageClient) url(bucket, key, logName string) string {
+func (c *GcsStorage) url(bucket, key, logName string) string {
 	// return "http://127.0.0.1:5656"
 	url := baseURL + bucket + "/" + key
 	log.Print(logName + " " + url)
@@ -61,7 +64,7 @@ func (c *StorageClient) url(bucket, key, logName string) string {
 }
 
 // GetFile returns a reader for the contents of resource at bucket/key
-func (c *StorageClient) GetFile(bucket, key string) (io.ReadCloser, error) {
+func (c *GcsStorage) GetFile(bucket, key string) (io.ReadCloser, error) {
 	httpClient, err := c.httpClient()
 
 	if err != nil {
@@ -84,7 +87,7 @@ func (c *StorageClient) GetFile(bucket, key string) (io.ReadCloser, error) {
 }
 
 // PutFile uploads a file to GCS simply
-func (c *StorageClient) PutFile(bucket, key string, contents io.Reader, mimeType string) error {
+func (c *GcsStorage) PutFile(bucket, key string, contents io.Reader, mimeType string) error {
 	return c.PutFileWithSetup(bucket, key, contents, func(req *http.Request) error {
 		req.Header.Add("Content-Type", mimeType)
 		req.Header.Add("x-goog-acl", "public-read")
@@ -93,7 +96,7 @@ func (c *StorageClient) PutFile(bucket, key string, contents io.Reader, mimeType
 }
 
 // PutFileWithSetup uploads a file to GCS letting the user set up the request first
-func (c *StorageClient) PutFileWithSetup(bucket, key string, contents io.Reader, setup func(*http.Request) error) error {
+func (c *GcsStorage) PutFileWithSetup(bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
 	httpClient, err := c.httpClient()
 
 	if err != nil {
@@ -123,7 +126,7 @@ func (c *StorageClient) PutFileWithSetup(bucket, key string, contents io.Reader,
 }
 
 // PutFileFromFname uploads a file from disk. It detects mime type from the file extension
-func (c *StorageClient) PutFileFromFname(bucket, key, fname string) error {
+func (c *GcsStorage) PutFileFromFname(bucket, key, fname string) error {
 	file, err := os.Open(fname)
 
 	if err != nil {
@@ -139,7 +142,7 @@ func (c *StorageClient) PutFileFromFname(bucket, key, fname string) error {
 }
 
 // DeleteFile removes a file from a GCS bucket
-func (c *StorageClient) DeleteFile(bucket, key string) error {
+func (c *GcsStorage) DeleteFile(bucket, key string) error {
 	httpClient, err := c.httpClient()
 
 	if err != nil {
