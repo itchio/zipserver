@@ -18,16 +18,20 @@ var (
 	tmpDir = "zip_tmp"
 )
 
+// Archiver holds together the GCS client along with configuration values
+// (credentials, limits etc.)
 type Archiver struct {
 	*StorageClient
 	*Config
 }
 
+// ExtractedFile represents a file extracted from a .zip into a GCS bucket
 type ExtractedFile struct {
 	Key  string
 	Size uint64
 }
 
+// NewArchiver creates a new archiver from the given config
 func NewArchiver(config *Config) *Archiver {
 	storage, err := NewStorageClient(config)
 
@@ -99,11 +103,14 @@ func shouldIgnoreFile(fname string) bool {
 	return false
 }
 
+// UploadFileTask contains the information needed to extract a single file from a .zip
 type UploadFileTask struct {
 	File *zip.File
 	Key  string
 }
 
+// UploadFileResult is successful is Error is nil - in that case, it contains the
+// GCS key the file was uploaded under, and the number of bytes written for that file.
 type UploadFileResult struct {
 	Error error
 	Key   string

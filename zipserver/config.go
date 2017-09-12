@@ -2,17 +2,33 @@ package zipserver
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
+
+	errors "github.com/go-errors/errors"
 )
 
+// DefaultConfigFname is the default name for zipserver's config file
 var DefaultConfigFname = "zipserver.json"
 
+// ExtractLimits describes various limits we enforce when extracting zips,
+// mostly related to the number of files, their sizes, and the lengths of their paths
+type ExtractLimits struct {
+	MaxFileSize       uint64
+	MaxTotalSize      uint64
+	MaxNumFiles       int
+	MaxFileNameLength int
+	ExtractionThreads int
+}
+
+// Config contains both storage configuration and the enforced extraction limits
 type Config struct {
-	PrivateKeyPath    string
-	ClientEmail       string
-	Bucket            string
-	ExtractPrefix     string
+	PrivateKeyPath string
+	ClientEmail    string
+	Bucket         string
+	ExtractPrefix  string
+
 	MaxFileSize       uint64
 	MaxTotalSize      uint64
 	MaxNumFiles       int
@@ -28,32 +44,40 @@ var defaultConfig = Config{
 	ExtractionThreads: 4,
 }
 
-type ExtractLimits struct {
-	MaxFileSize       uint64
-	MaxTotalSize      uint64
-	MaxNumFiles       int
-	MaxFileNameLength int
-	ExtractionThreads int
-}
-
-func LoadConfig(fname string) *Config {
+// LoadConfig reads a config file into a config struct
+func LoadConfig(fname string) (*Config, error) {
 	jsonBlob, err := ioutil.ReadFile(fname)
-
 	if err != nil {
-		log.Fatal(err)
+		return nil, errors.Wrap(err, 0)
 	}
 
 	config := defaultConfig
 	err = json.Unmarshal(jsonBlob, &config)
 
 	if err != nil {
-		log.Fatal("Failed parsing config: " + fname + ": " + err.Error())
+		return nil, fmt.Errorf("Failed parsing config file %s: %s", fname, err.Error())
 	}
 
-	return &config
+	if config.PrivateKeyPath == "" {
+		return nil, errors.New("Config error: PrivateKeyPath field missing")
+	}
+
+	if config.ClientEmail == "" {
+		return nil, errors.New("Config error: ClientEmail field missing")
+	}
+
+	if config.Bucket == "" {
+		return nil, errors.New("Config error: Bucket field missing")
+	}
+
+	if config.ExtractPrefix == "" {
+		return nil, errors.New("Config error: ExtractPrefix field missing")
+	}
+
+	return &config, nil
 }
 
-func (c *Config) Dump() string {
+func (c *Config) String() string {
 	bytes, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		log.Fatal(err)
@@ -62,6 +86,7 @@ func (c *Config) Dump() string {
 	return string(bytes)
 }
 
+// DefaultExtractLimits returns only extract limits from a config struct
 func DefaultExtractLimits(config *Config) *ExtractLimits {
 	return &ExtractLimits{
 		MaxFileSize:       config.MaxFileSize,

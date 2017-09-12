@@ -1,0 +1,92 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "cloud.google.com/go/compute/metadata",
+			"repository": "https://code.googlesource.com/gocloud",
+			"vcs": "git",
+			"revision": "181d01a23b4460c0e9c8abf1bdef689e76098f12",
+			"branch": "master",
+			"path": "/compute/metadata",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/go-errors/errors",
+			"repository": "https://github.com/go-errors/errors",
+			"vcs": "git",
+			"revision": "8fa88b06e5974e97fbf9899a7f86a344bfd1f105",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/golang/protobuf/proto",
+			"repository": "https://github.com/golang/protobuf",
+			"vcs": "git",
+			"revision": "17ce1425424ab154092bbb43af630bd647f3bb0d",
+			"branch": "master",
+			"path": "/proto",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/golang/protobuf/ptypes/any",
+			"repository": "https://github.com/golang/protobuf",
+			"vcs": "git",
+			"revision": "17ce1425424ab154092bbb43af630bd647f3bb0d",
+			"branch": "master",
+			"path": "ptypes/any",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/stretchr/testify/\\vendor\\github.com\\davecgh\\go-spew\\spew",
+			"repository": "https://github.com/stretchr/testify",
+			"vcs": "git",
+			"revision": "890a5c3458b43e6104ff5da8dfa139d013d77544",
+			"branch": "master",
+			"path": "\\vendor\\github.com\\davecgh\\go-spew\\spew",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/stretchr/testify/\\vendor\\github.com\\pmezard\\go-difflib\\difflib",
+			"repository": "https://github.com/stretchr/testify",
+			"vcs": "git",
+			"revision": "890a5c3458b43e6104ff5da8dfa139d013d77544",
+			"branch": "master",
+			"path": "\\vendor\\github.com\\pmezard\\go-difflib\\difflib",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/stretchr/testify/assert",
+			"repository": "https://github.com/stretchr/testify",
+			"vcs": "git",
+			"revision": "890a5c3458b43e6104ff5da8dfa139d013d77544",
+			"branch": "master",
+			"path": "/assert",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/net/context",
+			"repository": "https://go.googlesource.com/net",
+			"vcs": "git",
+			"revision": "66aacef3dd8a676686c7ae3716979581e8b03c47",
+			"branch": "master",
+			"path": "/context",
+			"notests": true
+		},
+		{
+			"importpath": "golang.org/x/oauth2",
+			"repository": "https://go.googlesource.com/oauth2",
+			"vcs": "git",
+			"revision": "d89af98d7c6bba047c5a2622f36bc14b8766df85",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "google.golang.org/appengine",
+			"repository": "https://github.com/golang/appengine",
+			"vcs": "git",
+			"revision": "d9a072cfa7b9736e44311ef77b3e09d804bfa599",
+			"branch": "master",
+			"notests": true
+		}
+	]
+}
