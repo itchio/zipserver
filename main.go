@@ -25,14 +25,18 @@ func init() {
 
 func main() {
 	flag.Parse()
-	config := zipserver.LoadConfig(configFname)
+	config, err := zipserver.LoadConfig(configFname)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	if dumpConfig {
-		fmt.Println(config.Dump())
+		fmt.Println(config)
 		os.Exit(0)
 	}
 
-	if err := zipserver.StartZipServer(listenTo, config); err != nil {
+	err = zipserver.StartZipServer(listenTo, config)
+	if err != nil {
 		log.Fatal(err)
 	}
 }
