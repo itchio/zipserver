@@ -14,7 +14,7 @@ type ClientFunc func(client *StorageClient, config *Config)
 func withClient(t *testing.T, cb ClientFunc) {
 	_, err := os.Lstat(testPrivateKey)
 	if err != nil {
-		t.Logf("Skipping %s (no private key)", t.Name())
+		t.Logf("Skipping (no private key)")
 		return
 	}
 
