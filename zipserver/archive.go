@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -264,7 +265,15 @@ func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits
 
 	limited := limitedReader(reader, file.UncompressedSize64, &bytesRead)
 
-	err = a.Storage.PutFile(a.Bucket, key, limited, mimeType)
+	err = a.Storage.PutFileWithSetup(a.Bucket, key, limited, func(req *http.Request) error {
+		if mimeType == "application/gzip" {
+			req.Header.Set("content-encoding", "gzip")
+			req.Header.Set("content-type", "application/octet-stream")
+		} else {
+			req.Header.Set("content-type", mimeType)
+		}
+		return nil
+	})
 	if err != nil {
 		return bytesRead, err
 	}
