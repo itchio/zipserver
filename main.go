@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	. "github.com/leafo/zipserver/zipserver"
+	"github.com/leafo/zipserver/zipserver"
 )
 
 var _ fmt.Formatter
@@ -18,21 +18,21 @@ var (
 )
 
 func init() {
-	flag.StringVar(&configFname, "config", DefaultConfigFname, "Path to json config file")
+	flag.StringVar(&configFname, "config", zipserver.DefaultConfigFname, "Path to json config file")
 	flag.StringVar(&listenTo, "listen", "127.0.0.1:8090", "Address to listen to")
 	flag.BoolVar(&dumpConfig, "dump", false, "Dump the parsed config and exit")
 }
 
 func main() {
 	flag.Parse()
-	config := LoadConfig(configFname)
+	config := zipserver.LoadConfig(configFname)
 
 	if dumpConfig {
 		fmt.Println(config.Dump())
 		os.Exit(0)
 	}
 
-	if err := StartZipServer(listenTo, config); err != nil {
+	if err := zipserver.StartZipServer(listenTo, config); err != nil {
 		log.Fatal(err)
 	}
 }
