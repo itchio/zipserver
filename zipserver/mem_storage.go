@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"sync"
 )
 
 type memObject struct {
@@ -16,6 +17,7 @@ type memObject struct {
 // MemStorage implements Storage on a directory
 // it stores things in `baseDir/bucket/prefix...`
 type MemStorage struct {
+	mutex   sync.Mutex
 	objects map[string]memObject
 }
 
@@ -35,6 +37,9 @@ func (fs *MemStorage) objectPath(bucket, key string) string {
 
 // GetFile implements Storage.GetFile for FsStorage
 func (fs *MemStorage) GetFile(bucket, key string) (io.ReadCloser, error) {
+	fs.mutex.Lock()
+	defer fs.mutex.Unlock()
+
 	objectPath := fs.objectPath(bucket, key)
 
 	if obj, ok := fs.objects[objectPath]; ok {
@@ -45,6 +50,9 @@ func (fs *MemStorage) GetFile(bucket, key string) (io.ReadCloser, error) {
 }
 
 func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
+	fs.mutex.Lock()
+	defer fs.mutex.Unlock()
+
 	objectPath := fs.objectPath(bucket, key)
 
 	if obj, ok := fs.objects[objectPath]; ok {
@@ -64,6 +72,9 @@ func (fs *MemStorage) PutFile(bucket, key string, contents io.Reader, mimeType s
 
 // PutFileWithSetup implements Storage.PutFileWithSetup for FsStorage
 func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
+	fs.mutex.Lock()
+	defer fs.mutex.Unlock()
+
 	req, err := http.NewRequest("PUT", "http://127.0.0.1/dummy", nil)
 	if err != nil {
 		return err
@@ -90,6 +101,9 @@ func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, s
 
 // DeleteFile implements Storage.DeleteFile for FsStorage
 func (fs *MemStorage) DeleteFile(bucket, key string) error {
-	// TODO: implement
+	fs.mutex.Lock()
+	defer fs.mutex.Unlock()
+
+	delete(fs.objects, fs.objectPath(bucket, key))
 	return nil
 }
