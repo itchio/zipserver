@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime"
 	"os"
 	"path"
 	"strings"
 
 	"archive/zip"
+
+	"camlistore.org/pkg/magic"
 )
 
 var (
@@ -235,8 +236,24 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 
 // sends an individual file from zip
 func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits) (uint64, error) {
-	mimeType := mime.TypeByExtension(path.Ext(key))
+	readerCloser, err := file.Open()
+	if err != nil {
+		return 0, err
+	}
+	defer readerCloser.Close()
+
+	var reader io.Reader = readerCloser
+
+	// try determining MIME by extension
+	mimeType := magic.MIMETypeByExtension(path.Ext(key))
+
 	if mimeType == "" {
+		// try determining MIME by sniffing contents for magic numbers
+		mimeType, reader = magic.MIMETypeFromReader(reader)
+	}
+
+	if mimeType == "" {
+		// fall back to something sane
 		mimeType = "application/octet-stream"
 	}
 
@@ -244,9 +261,8 @@ func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits
 
 	var bytesRead uint64
 
-	reader, _ := file.Open()
 	limited := limitedReader(reader, file.UncompressedSize64, &bytesRead)
-	err := a.StorageClient.PutFile(a.Bucket, key, limited, mimeType)
+	err = a.StorageClient.PutFile(a.Bucket, key, limited, mimeType)
 
 	if err != nil {
 		return bytesRead, err

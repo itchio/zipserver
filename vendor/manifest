@@ -2,6 +2,15 @@
 	"version": 0,
 	"dependencies": [
 		{
+			"importpath": "camlistore.org/pkg/magic",
+			"repository": "https://camlistore.googlesource.com/camlistore",
+			"vcs": "git",
+			"revision": "fa46c3935dd3320bcc94d06bda02e2f5f0a68b4e",
+			"branch": "master",
+			"path": "/pkg/magic",
+			"notests": true
+		},
+		{
 			"importpath": "cloud.google.com/go/compute/metadata",
 			"repository": "https://code.googlesource.com/gocloud",
 			"vcs": "git",
