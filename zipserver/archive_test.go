@@ -46,9 +46,10 @@ func Test_ExtractOnGCS(t *testing.T) {
 }
 
 type zipEntry struct {
-	name             string
-	data             []byte
-	expectedMimeType string
+	name                    string
+	data                    []byte
+	expectedMimeType        string
+	expectedContentEncoding string
 }
 
 type zipLayout struct {
@@ -84,6 +85,10 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 			h, err := storage.getHeaders(bucket, path)
 			assert.NoError(t, err)
 			assert.EqualValues(t, entry.expectedMimeType, h.Get("content-type"))
+
+			if entry.expectedContentEncoding != "" {
+				assert.EqualValues(t, entry.expectedContentEncoding, h.Get("content-encoding"))
+			}
 		}()
 	}
 }
@@ -113,14 +118,16 @@ func Test_ExtractInMemory(t *testing.T) {
 				expectedMimeType: "application/octet-stream",
 			},
 			zipEntry{
-				name:             "something.gz",
-				data:             []byte{0x1F, 0x8B, 0x08, 1, 5, 2, 4, 9, 3, 1, 2, 5},
-				expectedMimeType: "application/gzip",
+				name:                    "something.gz",
+				data:                    []byte{0x1F, 0x8B, 0x08, 1, 5, 2, 4, 9, 3, 1, 2, 5},
+				expectedMimeType:        "application/octet-stream",
+				expectedContentEncoding: "gzip",
 			},
 			zipEntry{
-				name:             "gzip-without-extension",
-				data:             []byte{0x1F, 0x8B, 0x08, 9, 1, 5, 2, 3, 5, 2, 6, 4, 4},
-				expectedMimeType: "application/gzip",
+				name:                    "gzip-without-extension",
+				data:                    []byte{0x1F, 0x8B, 0x08, 9, 1, 5, 2, 3, 5, 2, 6, 4, 4},
+				expectedMimeType:        "application/octet-stream",
+				expectedContentEncoding: "gzip",
 			},
 		},
 	}
