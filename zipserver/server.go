@@ -79,7 +79,12 @@ func writeJSONError(w http.ResponseWriter, kind string, err error) error {
 // StartZipServer starts listening for extract and slurp requests
 func StartZipServer(listenTo string, _config *Config) error {
 	config = _config
+
+	// Extract a .zip file (downloaded from GCS), stores each
+	// individual file on GCS in a given bucket/prefix
 	http.Handle("/extract", errorHandler(zipHandler))
+
+	// Download a file from an http{,s} URL and store it on GCS
 	http.Handle("/slurp", errorHandler(slurpHandler))
 
 	log.Print("Listening on: " + listenTo)

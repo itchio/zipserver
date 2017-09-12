@@ -1,6 +1,7 @@
 package zipserver
 
 import (
+	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -34,11 +35,18 @@ func withClient(t *testing.T, cb ClientFunc) {
 
 func TestGetFile(t *testing.T) {
 	withClient(t, func(client *StorageClient, config *Config) {
-		str, err := client.GetFileToString(config.Bucket, "text.txt")
-
+		reader, err := client.GetFile(config.Bucket, "text.txt")
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		defer reader.Close()
+		bytesContent, err := ioutil.ReadAll(reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		str := string(bytesContent)
 
 		if !strings.Contains(str, "Gravity") {
 			t.Fatal("Expected to get string from text.txt")

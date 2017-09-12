@@ -255,6 +255,8 @@ func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits
 	return bytesRead, nil
 }
 
+// ExtractZip downloads the zip at `key` to a temporary file,
+// then extracts its contents and uploads each item to `prefix`
 func (a *Archiver) ExtractZip(key, prefix string, limits *ExtractLimits) ([]ExtractedFile, error) {
 	fname, err := a.fetchZip(key)
 	if err != nil {

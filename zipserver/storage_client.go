@@ -20,13 +20,16 @@ var (
 	scope   = "https://www.googleapis.com/auth/devstorage.full_control"
 )
 
-// Simple interface to Google Cloud Storage
+// StorageClient is a simple interface to Google Cloud Storage
+//
+// Example usage:
 //   client := NewStorageClient(config)
 //   readCloser, err = client.GetFile("my_bucket", "my_file")
 type StorageClient struct {
 	jwtConfig *jwt.Config
 }
 
+// NewStorageClient returns a new GCS storage client
 func NewStorageClient(config *Config) (*StorageClient, error) {
 	pemBytes, err := ioutil.ReadFile(config.PrivateKeyPath)
 
@@ -57,6 +60,7 @@ func (c *StorageClient) url(bucket, key, logName string) string {
 	return url
 }
 
+// GetFile returns a reader for the contents of resource at bucket/key
 func (c *StorageClient) GetFile(bucket, key string) (io.ReadCloser, error) {
 	httpClient, err := c.httpClient()
 
@@ -79,23 +83,7 @@ func (c *StorageClient) GetFile(bucket, key string) (io.ReadCloser, error) {
 	return res.Body, nil
 }
 
-func (c *StorageClient) GetFileToString(bucket, key string) (string, error) {
-	reader, err := c.GetFile(bucket, key)
-
-	if err != nil {
-		return "", err
-	}
-
-	defer reader.Close()
-	body, err := ioutil.ReadAll(reader)
-
-	if err != nil {
-		return "", err
-	}
-
-	return string(body), nil
-}
-
+// PutFile uploads a file to GCS simply
 func (c *StorageClient) PutFile(bucket, key string, contents io.Reader, mimeType string) error {
 	return c.PutFileWithSetup(bucket, key, contents, func(req *http.Request) error {
 		req.Header.Add("Content-Type", mimeType)
@@ -104,6 +92,7 @@ func (c *StorageClient) PutFile(bucket, key string, contents io.Reader, mimeType
 	})
 }
 
+// PutFileWithSetup uploads a file to GCS letting the user set up the request first
 func (c *StorageClient) PutFileWithSetup(bucket, key string, contents io.Reader, setup func(*http.Request) error) error {
 	httpClient, err := c.httpClient()
 
@@ -133,6 +122,7 @@ func (c *StorageClient) PutFileWithSetup(bucket, key string, contents io.Reader,
 	return nil
 }
 
+// PutFileFromFname uploads a file from disk. It detects mime type from the file extension
 func (c *StorageClient) PutFileFromFname(bucket, key, fname string) error {
 	file, err := os.Open(fname)
 
@@ -148,6 +138,7 @@ func (c *StorageClient) PutFileFromFname(bucket, key, fname string) error {
 	return c.PutFile(bucket, key, file, mimeType)
 }
 
+// DeleteFile removes a file from a GCS bucket
 func (c *StorageClient) DeleteFile(bucket, key string) error {
 	httpClient, err := c.httpClient()
 
