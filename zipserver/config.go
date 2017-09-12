@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 
 	errors "github.com/go-errors/errors"
 )
@@ -80,7 +79,7 @@ func LoadConfig(fname string) (*Config, error) {
 func (c *Config) String() string {
 	bytes, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Sprintf("Error: could not stringify config: %s", err.Error())
 	}
 
 	return string(bytes)

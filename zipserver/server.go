@@ -76,6 +76,7 @@ func writeJSONError(w http.ResponseWriter, kind string, err error) error {
 	}{kind, err.Error()})
 }
 
+// StartZipServer starts listening for extract and slurp requests
 func StartZipServer(listenTo string, _config *Config) error {
 	config = _config
 	http.Handle("/extract", errorHandler(zipHandler))
