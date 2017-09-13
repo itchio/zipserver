@@ -100,6 +100,7 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 			h, err := storage.getHeaders(bucket, path)
 			assert.NoError(t, err)
 			assert.EqualValues(t, entry.expectedMimeType, h.Get("content-type"))
+			assert.EqualValues(t, "public-read", h.Get("x-goog-acl"))
 
 			if entry.expectedContentEncoding != "" {
 				assert.EqualValues(t, entry.expectedContentEncoding, h.Get("content-encoding"))

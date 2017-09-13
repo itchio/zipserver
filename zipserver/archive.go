@@ -296,6 +296,7 @@ func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits
 			req.Header.Set("content-encoding", contentEncoding)
 		}
 		req.Header.Set("content-type", mimeType)
+		req.Header.Set("x-goog-acl", "public-read")
 		return nil
 	})
 	if err != nil {
