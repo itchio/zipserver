@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/leafo/zipserver.svg?branch=master)](https://travis-ci.org/leafo/zipserver)
+[![Build Status](https://travis-ci.org/itchio/zipserver.svg?branch=master)](https://travis-ci.org/itchio/zipserver)
 
 # zipserver
 
@@ -13,7 +13,7 @@ size, total file size, or number of files.
 Install
 
 ```bash
-go get github.com/leafo/zipserver
+go get github.com/itchio/zipserver
 
 zipserver -help
 ```
