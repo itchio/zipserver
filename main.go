@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/go-errors/errors"
-	"github.com/leafo/zipserver/zipserver"
+	"github.com/itchio/zipserver/zipserver"
 )
 
 var _ fmt.Formatter

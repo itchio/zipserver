@@ -2,7 +2,7 @@
 .PHONY: install test
 
 install:
-	go install github.com/leafo/zipserver
+	go install github.com/itchio/zipserver
 
 test:
-	go test -v github.com/leafo/zipserver/zipserver
+	go test -v github.com/itchio/zipserver/zipserver

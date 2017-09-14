@@ -4,7 +4,7 @@ go:
   - 1.7.3
   - 1.9
 
-go_import_path: github.com/leafo/zipserver
+go_import_path: github.com/itchio/zipserver
 
 script:
   - go test -race -v ./zipserver
