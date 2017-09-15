@@ -151,10 +151,9 @@ func Test_ExtractInMemory(t *testing.T) {
 				expectedMimeType: "application/octet-stream",
 			},
 			zipEntry{
-				name:                    "something.gz",
-				data:                    []byte{0x1F, 0x8B, 0x08, 1, 5, 2, 4, 9, 3, 1, 2, 5},
-				expectedMimeType:        "application/octet-stream",
-				expectedContentEncoding: "gzip",
+				name:             "something.gz",
+				data:             []byte{0x1F, 0x8B, 0x08, 1, 5, 2, 4, 9, 3, 1, 2, 5},
+				expectedMimeType: "application/gzip",
 			},
 			zipEntry{
 				name:                    "something.unityweb",

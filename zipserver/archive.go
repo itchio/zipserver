@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"path"
 	"strings"
@@ -128,9 +127,7 @@ func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTas
 		file := task.File
 		key := task.Key
 
-		// old Unity versions expect you to serve `.memgz` files as `.mem` with
-		// `Content-Encoding: gzip`, so the out key might not be the same as the key
-		written, outKey, err := a.sendZipFile(key, file, limits)
+		resource, err := a.extractAndUploadOne(key, file, limits)
 
 		if err != nil {
 			log.Print("Failed sending " + key + ": " + err.Error())
@@ -138,7 +135,7 @@ func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTas
 			return
 		}
 
-		results <- UploadFileResult{nil, outKey, written}
+		results <- UploadFileResult{nil, resource.key, resource.size}
 	}
 }
 
@@ -243,21 +240,19 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 	return extractedFiles, nil
 }
 
-var oldUnitySuffixes = []string{
-	"jsgz",
-	"datagz",
-	"memgz",
-}
-
-// sends an individual file from zip
-func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits) (uint64, string, error) {
+// sends an individual file from a zip
+func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *ExtractLimits) (*ResourceSpec, error) {
 	readerCloser, err := file.Open()
 	if err != nil {
-		return 0, key, err
+		return nil, err
 	}
 	defer readerCloser.Close()
 
 	var reader io.Reader = readerCloser
+
+	resource := &ResourceSpec{
+		key: key,
+	}
 
 	// try determining MIME by extension
 	mimeType := magic.MIMETypeByExtension(path.Ext(key))
@@ -271,39 +266,21 @@ func (a *Archiver) sendZipFile(key string, file *zip.File, limits *ExtractLimits
 		// fall back to something sane
 		mimeType = "application/octet-stream"
 	}
+	resource.contentType = mimeType
 
-	var bytesRead uint64
+	resource.applyContentEncodingRules()
+	resource.applyRewriteRules()
 
-	limited := limitedReader(reader, file.UncompressedSize64, &bytesRead)
+	log.Printf("Sending: %s", resource)
 
-	contentEncoding := ""
-	if mimeType == "application/gzip" {
-		contentEncoding = "gzip"
-		mimeType = "application/octet-stream"
+	limited := limitedReader(reader, file.UncompressedSize64, &resource.size)
 
-		for _, suffix := range oldUnitySuffixes {
-			if strings.HasSuffix(key, suffix) {
-				key = strings.TrimSuffix(key, "gz")
-				break
-			}
-		}
-	}
-
-	log.Printf("Sending: %s (%s)", key, mimeType)
-
-	err = a.Storage.PutFileWithSetup(a.Bucket, key, limited, func(req *http.Request) error {
-		if contentEncoding != "" {
-			req.Header.Set("content-encoding", contentEncoding)
-		}
-		req.Header.Set("content-type", mimeType)
-		req.Header.Set("x-goog-acl", "public-read")
-		return nil
-	})
+	err = a.Storage.PutFileWithSetup(a.Bucket, resource.key, limited, resource.setupRequest)
 	if err != nil {
-		return bytesRead, key, err
+		return resource, errors.Wrap(err, 0)
 	}
 
-	return bytesRead, key, nil
+	return resource, nil
 }
 
 // ExtractZip downloads the zip at `key` to a temporary file,
