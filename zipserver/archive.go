@@ -99,6 +99,10 @@ func shouldIgnoreFile(fname string) bool {
 		return true
 	}
 
+	if strings.Contains(fname, ".git/") {
+		return true
+	}
+
 	if path.IsAbs(fname) {
 		return true
 	}
