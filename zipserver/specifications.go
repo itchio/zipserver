@@ -44,13 +44,13 @@ type ContentEncodingSpec struct {
 }
 
 var contentEncodingSpecs = []ContentEncodingSpec{
-	// Unity <= 5.5
-	{".jsgz", "gzip"},
-	{".datagz", "gzip"},
-	{".memgz", "gzip"},
-	{".unity3dgz", "gzip"},
-	// Unity >= 5.6
-	{".unityweb", "gzip"},
+// // Unity <= 5.5
+// {".jsgz", "gzip"},
+// {".datagz", "gzip"},
+// {".memgz", "gzip"},
+// {".unity3dgz", "gzip"},
+// // Unity >= 5.6
+// {".unityweb", "gzip"},
 }
 
 func (rs *ResourceSpec) applyContentEncodingRules() {
@@ -75,12 +75,12 @@ type RewriteSpec struct {
 }
 
 var rewriteSpecs = []RewriteSpec{
-	// For Unity WebGL up to 5.5, see
-	// https://docs.unity3d.com/550/Documentation/Manual/webgl-deploying.html
-	{".jsgz", ".js"},
-	{".datagz", ".data"},
-	{".memgz", ".mem"},
-	{".unity3dgz", ".unity3d"},
+// // For Unity WebGL up to 5.5, see
+// // https://docs.unity3d.com/550/Documentation/Manual/webgl-deploying.html
+// {".jsgz", ".js"},
+// {".datagz", ".data"},
+// {".memgz", ".mem"},
+// {".unity3dgz", ".unity3d"},
 }
 
 func (rs *ResourceSpec) applyRewriteRules() {
