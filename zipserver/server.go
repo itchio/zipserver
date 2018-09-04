@@ -84,6 +84,9 @@ func StartZipServer(listenTo string, _config *Config) error {
 	// individual file on GCS in a given bucket/prefix
 	http.Handle("/extract", errorHandler(extractHandler))
 
+	// show the files in the zip
+	http.Handle("/list", errorHandler(listHandler))
+
 	// Download a file from an http{,s} URL and store it on GCS
 	http.Handle("/slurp", errorHandler(slurpHandler))
 
