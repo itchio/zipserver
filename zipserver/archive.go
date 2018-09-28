@@ -86,6 +86,15 @@ func (a *Archiver) abortUpload(files []ExtractedFile) error {
 	return nil
 }
 
+func MIMETypeByExtension(ext string) string {
+	// custom mime types that aren't defined in /etc/mime.types
+	if ext == ".wasm" {
+		return "application/wasm"
+	}
+
+	return magic.MIMETypeByExtension(ext)
+}
+
 func shouldIgnoreFile(fname string) bool {
 	if strings.HasSuffix(fname, "/") {
 		return true
@@ -259,7 +268,7 @@ func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *Extra
 	}
 
 	// try determining MIME by extension
-	mimeType := magic.MIMETypeByExtension(path.Ext(key))
+	mimeType := MIMETypeByExtension(path.Ext(key))
 
 	if mimeType == "" {
 		// try determining MIME by sniffing contents for magic numbers
