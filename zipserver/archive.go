@@ -287,6 +287,17 @@ func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *Extra
 				mimeType = realMimeType
 			}
 		}
+
+	} else if strings.HasSuffix(key, ".br") {
+		// there is no way to detect a brotli stream, so we just assume if it ends if br then it's brotli
+		// this path is used for Unity 2020 games using the default brotli compression
+		resource.contentEncoding = "br"
+		realMimeType := mime.TypeByExtension(path.Ext(strings.TrimSuffix(key, ".br")))
+
+		if realMimeType != "" {
+			mimeType = realMimeType
+		}
+
 	} else if mimeType == "" {
 		mimeType = contentMimeType
 	}

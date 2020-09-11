@@ -37,37 +37,6 @@ func (rs *ResourceSpec) setupRequest(req *http.Request) error {
 	return nil
 }
 
-// ContentEncodingSpec contains rules for setting the 'Content-Encoding' HTTP header
-type ContentEncodingSpec struct {
-	extension string
-	encoding  string
-}
-
-var contentEncodingSpecs = []ContentEncodingSpec{
-	// // Unity <= 5.5
-	// {".jsgz", "gzip"},
-	// {".datagz", "gzip"},
-	// {".memgz", "gzip"},
-	// {".unity3dgz", "gzip"},
-	// // Unity >= 5.6
-	// {".unityweb", "gzip"},
-}
-
-func (rs *ResourceSpec) applyContentEncodingRules() {
-	extension := path.Ext(rs.key)
-
-	for _, spec := range contentEncodingSpecs {
-		if extension == spec.extension {
-			rs.contentEncoding = spec.encoding
-			break
-		}
-	}
-
-	if rs.contentEncoding == "gzip" {
-		rs.contentType = "application/octet-stream"
-	}
-}
-
 // RewriteSpec contains rules for rewriting file extensions
 type RewriteSpec struct {
 	oldExtension string
@@ -77,13 +46,18 @@ type RewriteSpec struct {
 var rewriteSpecs = []RewriteSpec{
 	// // For Unity WebGL up to 5.5, see
 	// // https://docs.unity3d.com/550/Documentation/Manual/webgl-deploying.html
-	// {".jsgz", ".js"},
-	// {".datagz", ".data"},
-	// {".memgz", ".mem"},
-	// {".unity3dgz", ".unity3d"},
+	{".jsgz", ".js"},
+	{".datagz", ".data"},
+	{".memgz", ".mem"},
+	{".unity3dgz", ".unity3d"},
 }
 
 func (rs *ResourceSpec) applyRewriteRules() {
+	// rewrite rules only apply when we've identified the gzip suffix
+	if rs.contentEncoding != "gzip" {
+		return
+	}
+
 	extension := path.Ext(rs.key)
 
 	for _, spec := range rewriteSpecs {
