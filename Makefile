@@ -1,6 +1,9 @@
 
 .PHONY: install test
 
+build:
+	go build -o bin/zipserver
+
 install:
 	go install github.com/itchio/zipserver
 
