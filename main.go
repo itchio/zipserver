@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 
 	"github.com/go-errors/errors"
 	"github.com/itchio/zipserver/zipserver"
@@ -16,6 +18,7 @@ var (
 	listenTo    string
 	dumpConfig  bool
 	serve       string
+	extract     string
 )
 
 func init() {
@@ -23,6 +26,7 @@ func init() {
 	flag.StringVar(&listenTo, "listen", "127.0.0.1:8090", "Address to listen to")
 	flag.BoolVar(&dumpConfig, "dump", false, "Dump the parsed config and exit")
 	flag.StringVar(&serve, "serve", "", "Serve a given zip from a local HTTP server")
+	flag.StringVar(&extract, "extract", "", "Extract zip file to random name on GCS (requires a config with bucket)")
 }
 
 func must(err error) {
@@ -50,6 +54,36 @@ func main() {
 
 	if dumpConfig {
 		fmt.Println(config)
+		return
+	}
+
+	if extract != "" {
+		archiver := zipserver.NewArchiver(config)
+		limits := zipserver.DefaultExtractLimits(config)
+
+		log.Println("Extraction threads:", limits.ExtractionThreads)
+		log.Println("Bucket:", config.Bucket)
+
+		var letters = []rune("rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz")
+
+		var randChars = make([]rune, 20)
+		for i := range randChars {
+			randChars[i] = letters[rand.Intn(len(letters))]
+		}
+
+		files, err := archiver.UploadZipFromFile(extract, string(randChars), limits)
+
+		if err != nil {
+			log.Fatal(err.Error())
+			return
+		}
+
+		blob, _ := json.Marshal(struct {
+			Success        bool
+			ExtractedFiles []zipserver.ExtractedFile
+		}{true, files})
+
+		fmt.Println(string(blob))
 		return
 	}
 

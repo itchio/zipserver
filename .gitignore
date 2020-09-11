@@ -1,1 +1,4 @@
 bin/
+test_files/
+zipserver.json
+*.pem

@@ -307,3 +307,8 @@ func (a *Archiver) ExtractZip(key, prefix string, limits *ExtractLimits) ([]Extr
 	prefix = path.Join(a.ExtractPrefix, prefix)
 	return a.sendZipExtracted(prefix, fname, limits)
 }
+
+func (a *Archiver) UploadZipFromFile(fname string, prefix string, limits *ExtractLimits) ([]ExtractedFile, error) {
+	prefix = path.Join("_zipserver", prefix)
+	return a.sendZipExtracted(prefix, fname, limits)
+}
