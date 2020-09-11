@@ -24,6 +24,9 @@ var (
 
 func init() {
 	mime.AddExtensionType(".unityweb", "application/octet-stream")
+	mime.AddExtensionType(".wasm", "application/wasm")
+	mime.AddExtensionType(".data", "application/octet-stream") // modern unity data file
+	mime.AddExtensionType(".ico", "image/x-icon")              // prevent image/vnd.microsoft.icon
 }
 
 // Archiver holds together the storage along with configuration values
@@ -267,15 +270,25 @@ func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *Extra
 	// try determining MIME by extension
 	mimeType := mime.TypeByExtension(path.Ext(key))
 
-	if mimeType == "" {
-		var buffer bytes.Buffer
+	var buffer bytes.Buffer
+	_, err = io.Copy(&buffer, io.LimitReader(reader, 512))
+	contentMimeType := http.DetectContentType(buffer.Bytes())
+	// join the bytes read and the original reader
+	reader = io.MultiReader(&buffer, reader)
 
-		_, err = io.Copy(&buffer, io.LimitReader(reader, 512))
+	if contentMimeType == "application/x-gzip" || contentMimeType == "application/gzip" {
+		resource.contentEncoding = "gzip"
 
-		mimeType = http.DetectContentType(buffer.Bytes())
+		// try to see if there's a real extension hidden beneath
+		if strings.HasSuffix(key, ".gz") {
+			realMimeType := mime.TypeByExtension(path.Ext(strings.TrimSuffix(key, ".gz")))
 
-		// join the bytes read and the original reader
-		reader = io.MultiReader(&buffer, reader)
+			if realMimeType != "" {
+				mimeType = realMimeType
+			}
+		}
+	} else if mimeType == "" {
+		mimeType = contentMimeType
 	}
 
 	if mimeType == "" {
@@ -284,7 +297,6 @@ func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *Extra
 	}
 	resource.contentType = mimeType
 
-	resource.applyContentEncodingRules()
 	resource.applyRewriteRules()
 
 	log.Printf("Sending: %s", resource)
