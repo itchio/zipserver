@@ -22,6 +22,10 @@ var (
 	tmpDir = "zip_tmp"
 )
 
+func init() {
+	mime.AddExtensionType(".unityweb", "application/octet-stream")
+}
+
 // Archiver holds together the storage along with configuration values
 // (credentials, limits etc.)
 type Archiver struct {

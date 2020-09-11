@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"time"
 
 	"github.com/go-errors/errors"
 	"github.com/itchio/zipserver/zipserver"
@@ -63,6 +64,8 @@ func main() {
 
 		log.Println("Extraction threads:", limits.ExtractionThreads)
 		log.Println("Bucket:", config.Bucket)
+
+		rand.Seed(time.Now().UTC().UnixNano())
 
 		var letters = []rune("rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz")
 
