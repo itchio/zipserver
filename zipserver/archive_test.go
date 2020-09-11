@@ -143,7 +143,7 @@ func Test_ExtractInMemory(t *testing.T) {
 			zipEntry{
 				name:             "file.txt",
 				data:             []byte("Hello there"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "garbage.bin",
@@ -222,7 +222,7 @@ func Test_ExtractInMemory(t *testing.T) {
 			zipEntry{
 				name:             strings.Repeat("x", 101),
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 		},
 	}, func(zl *zipLayout) {
@@ -239,7 +239,7 @@ func Test_ExtractInMemory(t *testing.T) {
 			zipEntry{
 				name:             "x",
 				data:             bytes.Repeat([]byte("oh no"), 100),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 		},
 	}, func(zl *zipLayout) {
@@ -256,22 +256,22 @@ func Test_ExtractInMemory(t *testing.T) {
 			zipEntry{
 				name:             "1",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "2",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "3",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "4",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 		},
 	}, func(zl *zipLayout) {
@@ -288,22 +288,22 @@ func Test_ExtractInMemory(t *testing.T) {
 			zipEntry{
 				name:             "1",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "2",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "3",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "4",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 		},
 	}, func(zl *zipLayout) {
@@ -327,22 +327,22 @@ func Test_ExtractInMemory(t *testing.T) {
 			zipEntry{
 				name:             "1",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "2",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "3",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 			zipEntry{
 				name:             "4",
 				data:             []byte("uh oh"),
-				expectedMimeType: "text/plain",
+				expectedMimeType: "text/plain; charset=utf-8",
 			},
 		},
 	}, func(zl *zipLayout) {
