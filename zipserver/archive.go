@@ -272,6 +272,11 @@ func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *Extra
 
 	var buffer bytes.Buffer
 	_, err = io.Copy(&buffer, io.LimitReader(reader, 512))
+
+	if err != nil {
+		return nil, errors.Wrap(err, 0)
+	}
+
 	contentMimeType := http.DetectContentType(buffer.Bytes())
 	// join the bytes read and the original reader
 	reader = io.MultiReader(&buffer, reader)
@@ -289,16 +294,16 @@ func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *Extra
 		}
 
 	} else if strings.HasSuffix(key, ".br") {
-		// there is no way to detect a brotli stream, so we just assume if it ends if br then it's brotli
-		// this path is used for Unity 2020 games using the default brotli compression
+		// there is no way to detect a brotli stream by content, so we assume if it ends if .br then it's brotli
+		// this path is used for Unity 2020 webgl games built with brotli compression
 		resource.contentEncoding = "br"
 		realMimeType := mime.TypeByExtension(path.Ext(strings.TrimSuffix(key, ".br")))
 
 		if realMimeType != "" {
 			mimeType = realMimeType
 		}
-
 	} else if mimeType == "" {
+		// fall back to the extension detected from content, eg. someone uploaded a .png with wrong extension
 		mimeType = contentMimeType
 	}
 
