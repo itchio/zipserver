@@ -5,10 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"mime"
 	"net/http"
-	"os"
-	"path"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -123,22 +120,6 @@ func (c *GcsStorage) PutFileWithSetup(bucket, key string, contents io.Reader, se
 
 	defer res.Body.Close()
 	return nil
-}
-
-// PutFileFromFname uploads a file from disk. It detects mime type from the file extension
-func (c *GcsStorage) PutFileFromFname(bucket, key, fname string) error {
-	file, err := os.Open(fname)
-
-	if err != nil {
-		return err
-	}
-
-	mimeType := mime.TypeByExtension(path.Ext(fname))
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
-	}
-
-	return c.PutFile(bucket, key, file, mimeType)
 }
 
 // DeleteFile removes a file from a GCS bucket
