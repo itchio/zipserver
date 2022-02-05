@@ -1,7 +1,7 @@
 package zipserver
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -41,7 +41,7 @@ func TestGetFile(t *testing.T) {
 		}
 
 		defer reader.Close()
-		bytesContent, err := ioutil.ReadAll(reader)
+		bytesContent, err := io.ReadAll(reader)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -4,7 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
@@ -45,7 +45,7 @@ func listFromBucket(key string, w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	body, err := ioutil.ReadAll(reader)
+	body, err := io.ReadAll(reader)
 
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func listFromUrl(url string, w http.ResponseWriter, r *http.Request) error {
 	}
 
 	defer response.Body.Close()
-	body, err := ioutil.ReadAll(response.Body)
+	body, err := io.ReadAll(response.Body)
 
 	return listZip(body, w, r)
 }

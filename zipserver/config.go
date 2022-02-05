@@ -3,7 +3,7 @@ package zipserver
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 
 	errors "github.com/go-errors/errors"
 )
@@ -45,7 +45,7 @@ var defaultConfig = Config{
 
 // LoadConfig reads a config file into a config struct
 func LoadConfig(fname string) (*Config, error) {
-	jsonBlob, err := ioutil.ReadFile(fname)
+	jsonBlob, err := os.ReadFile(fname)
 	if err != nil {
 		return nil, errors.Wrap(err, 0)
 	}

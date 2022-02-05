@@ -2,7 +2,6 @@ package zipserver
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -10,7 +9,7 @@ import (
 )
 
 func Test_Config(t *testing.T) {
-	tmpFile, err := ioutil.TempFile("", "zipserver-config")
+	tmpFile, err := os.CreateTemp("", "zipserver-config")
 	if err != nil {
 		t.Fatal(err)
 	}

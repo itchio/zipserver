@@ -3,7 +3,6 @@ package zipserver
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -36,13 +35,13 @@ func Test_limitedReader(t *testing.T) {
 	var totalBytes uint64
 	lr := limitedReader(sr, 128, &totalBytes)
 
-	result, err := ioutil.ReadAll(lr)
+	result, err := io.ReadAll(lr)
 	assert.NoError(t, err)
 	assert.EqualValues(t, s, string(result))
 	assert.EqualValues(t, len(s), totalBytes)
 
 	sr.Seek(0, os.SEEK_SET)
 	lr = limitedReader(sr, 5, &totalBytes)
-	result, err = ioutil.ReadAll(lr)
+	result, err = io.ReadAll(lr)
 	assert.Error(t, err)
 }

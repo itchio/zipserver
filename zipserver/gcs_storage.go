@@ -3,9 +3,9 @@ package zipserver
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -31,7 +31,7 @@ var _ Storage = (*GcsStorage)(nil)
 
 // NewGcsStorage returns a new GCS-backed storage
 func NewGcsStorage(config *Config) (*GcsStorage, error) {
-	pemBytes, err := ioutil.ReadFile(config.PrivateKeyPath)
+	pemBytes, err := os.ReadFile(config.PrivateKeyPath)
 
 	if err != nil {
 		return nil, err

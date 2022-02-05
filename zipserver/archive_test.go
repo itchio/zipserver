@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -93,7 +92,7 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 
 			defer reader.Close()
 
-			data, err := ioutil.ReadAll(reader)
+			data, err := io.ReadAll(reader)
 			assert.NoError(t, err)
 			assert.EqualValues(t, data, entry.data)
 

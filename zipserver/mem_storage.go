@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
@@ -49,7 +48,7 @@ func (fs *MemStorage) GetFile(bucket, key string) (io.ReadCloser, error) {
 	objectPath := fs.objectPath(bucket, key)
 
 	if obj, ok := fs.objects[objectPath]; ok {
-		return ioutil.NopCloser(bytes.NewReader(obj.data)), nil
+		return io.NopCloser(bytes.NewReader(obj.data)), nil
 	}
 
 	err := fmt.Errorf("%s: object not found", objectPath)
@@ -100,7 +99,7 @@ func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, s
 		return errors.Wrap(err, 0)
 	}
 
-	data, err := ioutil.ReadAll(contents)
+	data, err := io.ReadAll(contents)
 	if err != nil {
 		return errors.Wrap(err, 0)
 	}
