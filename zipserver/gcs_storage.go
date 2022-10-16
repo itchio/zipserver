@@ -2,6 +2,7 @@ package zipserver
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -20,8 +21,9 @@ var (
 // GcsStorage is a simple interface to Google Cloud Storage
 //
 // Example usage:
-//   storage := NewStorageClient(config)
-//   readCloser, err = storage.GetFile("my_bucket", "my_file")
+//
+//	storage := NewStorageClient(config)
+//	readCloser, err = storage.GetFile("my_bucket", "my_file")
 type GcsStorage struct {
 	jwtConfig *jwt.Config
 }
@@ -119,6 +121,15 @@ func (c *GcsStorage) PutFileWithSetup(bucket, key string, contents io.Reader, se
 	}
 
 	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("%s: %s", res.Status, body)
+	}
+
 	return nil
 }
 
