@@ -53,3 +53,13 @@ load a zip file you want to extract later.
 curl http://localhost:8090/slurp?key=myfile.zip&url=http://leafo.net/file.zip
 ```
 
+## GCS authentication and permissions
+
+The key file in your config should be the PEM-encoded private key for a
+service account which has permissions to view and create objects on your
+chosen GCS bucket.
+
+The bucket needs correct access settings:
+
+- Public access must be enabled, not prevented.
+- Access control should be set to fine-grained ("legacy ACL"), not uniform.
