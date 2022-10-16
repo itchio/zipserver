@@ -2,6 +2,7 @@ package zipserver
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -133,7 +134,7 @@ type UploadFileResult struct {
 	Size  uint64
 }
 
-func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTask, results chan<- UploadFileResult, cancel chan struct{}, done chan struct{}) {
+func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTask, results chan<- UploadFileResult, done chan struct{}) {
 	defer func() { done <- struct{}{} }()
 
 	for task := range tasks {
@@ -176,6 +177,7 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 
 	for _, file := range zipReader.File {
 		if shouldIgnoreFile(file.Name) {
+			log.Printf("Ignoring file %s", file.Name)
 			continue
 		}
 
@@ -201,11 +203,12 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 
 	tasks := make(chan UploadFileTask)
 	results := make(chan UploadFileResult)
-	cancel := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	done := make(chan struct{}, limits.ExtractionThreads)
 
 	for i := 0; i < limits.ExtractionThreads; i++ {
-		go uploadWorker(a, limits, tasks, results, cancel, done)
+		go uploadWorker(a, limits, tasks, results, done)
 	}
 
 	activeWorkers := limits.ExtractionThreads
@@ -217,8 +220,9 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 			task := UploadFileTask{file, key}
 			select {
 			case tasks <- task:
-			case <-cancel:
+			case <-ctx.Done():
 				// Something went wrong!
+				log.Println("Remaining tasks were canceled")
 				return
 			}
 		}
@@ -231,7 +235,7 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 		case result := <-results:
 			if result.Error != nil {
 				extractError = result.Error
-				close(cancel)
+				cancel()
 			} else {
 				extractedFiles = append(extractedFiles, ExtractedFile{result.Key, result.Size})
 				fileCount++
