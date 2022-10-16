@@ -159,6 +159,8 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 		return nil, errors.Wrap(err, 0)
 	}
 
+	defer zipReader.Close()
+
 	if len(zipReader.File) > limits.MaxNumFiles {
 		err := fmt.Errorf("Too many files in zip (%v > %v)",
 			len(zipReader.File), limits.MaxNumFiles)
@@ -166,8 +168,6 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 	}
 
 	extractedFiles := []ExtractedFile{}
-
-	defer zipReader.Close()
 
 	fileCount := 0
 	var byteCount uint64

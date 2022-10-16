@@ -39,11 +39,11 @@ func listFromBucket(key string, w http.ResponseWriter, r *http.Request) error {
 	}
 
 	reader, err := storage.GetFile(config.Bucket, key)
-	defer reader.Close()
-
 	if err != nil {
 		return err
 	}
+
+	defer reader.Close()
 
 	body, err := io.ReadAll(reader)
 
