@@ -3,6 +3,7 @@ package zipserver
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -81,9 +82,6 @@ func loadLimits(params url.Values, config *Config) *ExtractLimits {
 }
 
 func extractHandler(w http.ResponseWriter, r *http.Request) error {
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.JobTimeout))
-	defer cancel()
-
 	params := r.URL.Query()
 	key, err := getParam(params, "key")
 	if err != nil {
@@ -115,6 +113,9 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	if asyncURL == "" {
 		defer releaseKey(key)
 
+		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.JobTimeout))
+		defer cancel()
+
 		extracted, err := process(ctx)
 		if err != nil {
 			return writeJSONError(w, "ExtractError", err)
@@ -138,8 +139,15 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		resValues := url.Values{}
 
 		if err != nil {
+			errMessage := err.Error()
+
+			if errors.Is(err, context.DeadlineExceeded) {
+				errMessage = "Zip extraction timed out"
+			}
+
 			resValues.Add("Type", "ExtractError")
-			resValues.Add("Error", err.Error())
+			resValues.Add("Error", errMessage)
+			log.Print("Extraction failed ", err)
 		} else {
 			resValues.Add("Success", "true")
 			for idx, extractedFile := range extracted {
@@ -152,7 +160,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 
 		log.Print("Notifying " + asyncURL)
 
-		nofityCtx, nofifyCancel := context.WithTimeout(ctx, time.Duration(config.AsyncNotificationTimeout))
+		nofityCtx, nofifyCancel := context.WithTimeout(context.Background(), time.Duration(config.AsyncNotificationTimeout))
 		defer nofifyCancel()
 
 		outBody := bytes.NewBufferString(resValues.Encode())
