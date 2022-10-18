@@ -48,9 +48,9 @@ var defaultConfig = Config{
 	MaxFileNameLength: 80,
 	ExtractionThreads: 4,
 
-	JobTimeout:               Duration(3 * time.Minute),
-	FileGetTimeout:           Duration(10 * time.Second),
-	FilePutTimeout:           Duration(20 * time.Second),
+	JobTimeout:               Duration(5 * time.Minute),
+	FileGetTimeout:           Duration(1 * time.Minute),
+	FilePutTimeout:           Duration(1 * time.Minute),
 	AsyncNotificationTimeout: Duration(5 * time.Second),
 }
 
