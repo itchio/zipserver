@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testPrivateKey = "/home/leafo/code/go/cf45ea3f8a5f730a4b9702d11236439d9b014b20-privatekey.pem"
@@ -23,6 +24,9 @@ func withGoogleCloudStorage(t *testing.T, cb ClientFunc) {
 		PrivateKeyPath: testPrivateKey,
 		ClientEmail:    "507810471102@developer.gserviceaccount.com",
 		Bucket:         "leafo",
+		JobTimeout:     Duration(10 * time.Second),
+		FileGetTimeout: Duration(10 * time.Second),
+		FilePutTimeout: Duration(10 * time.Second),
 	}
 
 	storage, err := NewGcsStorage(config)

@@ -28,6 +28,9 @@ func emptyConfig() *Config {
 	return &Config{
 		Bucket:            "testbucket",
 		ExtractionThreads: 8,
+		JobTimeout:        Duration(10 * time.Second),
+		FileGetTimeout:    Duration(10 * time.Second),
+		FilePutTimeout:    Duration(10 * time.Second),
 	}
 }
 
