@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
 	"archive/zip"
 
@@ -54,7 +55,7 @@ func NewArchiver(config *Config) *Archiver {
 	return &Archiver{storage, config}
 }
 
-func (a *Archiver) fetchZip(key string) (string, error) {
+func (a *Archiver) fetchZip(ctx context.Context, key string) (string, error) {
 	os.MkdirAll(tmpDir, os.ModeDir|0777)
 
 	hasher := md5.New()
@@ -62,7 +63,7 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 	fname := a.Bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
 	fname = path.Join(tmpDir, fname)
 
-	src, err := a.Storage.GetFile(a.Bucket, key)
+	src, err := a.Storage.GetFile(ctx, a.Bucket, key)
 
 	if err != nil {
 		return "", errors.Wrap(err, 0)
@@ -90,7 +91,8 @@ func (a *Archiver) fetchZip(key string) (string, error) {
 func (a *Archiver) abortUpload(files []ExtractedFile) error {
 	for _, file := range files {
 		// FIXME: code quality - what if we fail here? any retry strategies?
-		a.Storage.DeleteFile(a.Bucket, file.Key)
+		ctx := context.Background()
+		a.Storage.DeleteFile(ctx, a.Bucket, file.Key)
 	}
 
 	return nil
@@ -134,14 +136,22 @@ type UploadFileResult struct {
 	Size  uint64
 }
 
-func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTask, results chan<- UploadFileResult, done chan struct{}) {
+func uploadWorker(
+	ctx context.Context,
+	a *Archiver,
+	tasks <-chan UploadFileTask,
+	results chan<- UploadFileResult,
+	done chan struct{},
+) {
 	defer func() { done <- struct{}{} }()
 
 	for task := range tasks {
 		file := task.File
 		key := task.Key
 
-		resource, err := a.extractAndUploadOne(key, file, limits)
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(a.Config.FilePutTimeout))
+		resource, err := a.extractAndUploadOne(ctx, key, file)
+		cancel() // Free resources now instead of deferring till func returns
 
 		if err != nil {
 			log.Print("Failed sending " + key + ": " + err.Error())
@@ -154,7 +164,11 @@ func uploadWorker(a *Archiver, limits *ExtractLimits, tasks <-chan UploadFileTas
 }
 
 // extracts and sends all files to prefix
-func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits) ([]ExtractedFile, error) {
+func (a *Archiver) sendZipExtracted(
+	ctx context.Context,
+	prefix, fname string,
+	limits *ExtractLimits,
+) ([]ExtractedFile, error) {
 	zipReader, err := zip.OpenReader(fname)
 	if err != nil {
 		return nil, errors.Wrap(err, 0)
@@ -203,12 +217,14 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 
 	tasks := make(chan UploadFileTask)
 	results := make(chan UploadFileResult)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	done := make(chan struct{}, limits.ExtractionThreads)
 
+	// Context can be canceled by caller or when an individual task fails.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	for i := 0; i < limits.ExtractionThreads; i++ {
-		go uploadWorker(a, limits, tasks, results, done)
+		go uploadWorker(ctx, a, tasks, results, done)
 	}
 
 	activeWorkers := limits.ExtractionThreads
@@ -258,7 +274,8 @@ func (a *Archiver) sendZipExtracted(prefix, fname string, limits *ExtractLimits)
 }
 
 // sends an individual file from a zip
-func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *ExtractLimits) (*ResourceSpec, error) {
+// Caller should set the job timeout in ctx.
+func (a *Archiver) extractAndUploadOne(ctx context.Context, key string, file *zip.File) (*ResourceSpec, error) {
 	readerCloser, err := file.Open()
 	if err != nil {
 		return nil, err
@@ -323,7 +340,7 @@ func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *Extra
 
 	limited := limitedReader(reader, file.UncompressedSize64, &resource.size)
 
-	err = a.Storage.PutFileWithSetup(a.Bucket, resource.key, limited, resource.setupRequest)
+	err = a.Storage.PutFileWithSetup(ctx, a.Bucket, resource.key, limited, resource.setupRequest)
 	if err != nil {
 		return resource, errors.Wrap(err, 0)
 	}
@@ -333,18 +350,28 @@ func (a *Archiver) extractAndUploadOne(key string, file *zip.File, limits *Extra
 
 // ExtractZip downloads the zip at `key` to a temporary file,
 // then extracts its contents and uploads each item to `prefix`
-func (a *Archiver) ExtractZip(key, prefix string, limits *ExtractLimits) ([]ExtractedFile, error) {
-	fname, err := a.fetchZip(key)
+// Caller should set the job timeout in ctx.
+func (a *Archiver) ExtractZip(
+	ctx context.Context,
+	key, prefix string,
+	limits *ExtractLimits,
+) ([]ExtractedFile, error) {
+	fname, err := a.fetchZip(ctx, key)
 	if err != nil {
 		return nil, err
 	}
 
 	defer os.Remove(fname)
 	prefix = path.Join(a.ExtractPrefix, prefix)
-	return a.sendZipExtracted(prefix, fname, limits)
+	return a.sendZipExtracted(ctx, prefix, fname, limits)
 }
 
-func (a *Archiver) UploadZipFromFile(fname string, prefix string, limits *ExtractLimits) ([]ExtractedFile, error) {
+// Caller should set the job timeout in ctx.
+func (a *Archiver) UploadZipFromFile(
+	ctx context.Context,
+	fname, prefix string,
+	limits *ExtractLimits,
+) ([]ExtractedFile, error) {
 	prefix = path.Join("_zipserver", prefix)
-	return a.sendZipExtracted(prefix, fname, limits)
+	return a.sendZipExtracted(ctx, prefix, fname, limits)
 }

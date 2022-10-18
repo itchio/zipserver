@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -78,6 +79,10 @@ func Test_Config(t *testing.T) {
 
 	assert.EqualValues(t, "/foo/bar.pem", c.PrivateKeyPath)
 	assert.EqualValues(t, 92, c.MaxFileSize)
+	assert.Equal(t, 3*time.Minute, time.Duration(c.JobTimeout))
+	assert.Equal(t, 10*time.Second, time.Duration(c.FileGetTimeout))
+	assert.Equal(t, 20*time.Second, time.Duration(c.FilePutTimeout))
+	assert.Equal(t, 5*time.Second, time.Duration(c.AsyncNotificationTimeout))
 
 	assert.True(t, c.String() != "")
 }

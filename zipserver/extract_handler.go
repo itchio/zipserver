@@ -1,11 +1,14 @@
 package zipserver
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 )
 
 var shared struct {
@@ -78,6 +81,9 @@ func loadLimits(params url.Values, config *Config) *ExtractLimits {
 }
 
 func extractHandler(w http.ResponseWriter, r *http.Request) error {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.JobTimeout))
+	defer cancel()
+
 	params := r.URL.Query()
 	key, err := getParam(params, "key")
 	if err != nil {
@@ -97,9 +103,9 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 
 	limits := loadLimits(params, config)
 
-	process := func() ([]ExtractedFile, error) {
+	process := func(ctx context.Context) ([]ExtractedFile, error) {
 		archiver := NewArchiver(config)
-		files, err := archiver.ExtractZip(key, prefix, limits)
+		files, err := archiver.ExtractZip(ctx, key, prefix, limits)
 
 		return files, err
 	}
@@ -109,7 +115,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	if asyncURL == "" {
 		defer releaseKey(key)
 
-		extracted, err := process()
+		extracted, err := process(ctx)
 		if err != nil {
 			return writeJSONError(w, "ExtractError", err)
 		}
@@ -124,7 +130,11 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	go (func() {
 		defer releaseKey(key)
 
-		extracted, err := process()
+		// This job is expected to outlive the incoming request, so create a detached context.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+		defer cancel()
+
+		extracted, err := process(ctx)
 		resValues := url.Values{}
 
 		if err != nil {
@@ -141,7 +151,19 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		log.Print("Notifying " + asyncURL)
-		asyncResponse, err := http.PostForm(asyncURL, resValues)
+
+		nofityCtx, nofifyCancel := context.WithTimeout(ctx, time.Duration(config.AsyncNotificationTimeout))
+		defer nofifyCancel()
+
+		outBody := bytes.NewBufferString(resValues.Encode())
+		req, err := http.NewRequestWithContext(nofityCtx, http.MethodPost, asyncURL, outBody)
+		if err != nil {
+			log.Printf("Failed to create callback request: %v", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		asyncResponse, err := http.DefaultClient.Do(req)
 		if err == nil {
 			asyncResponse.Body.Close()
 		} else {

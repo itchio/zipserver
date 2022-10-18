@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -45,16 +46,16 @@ func must(err error) {
 func main() {
 	flag.Parse()
 
-	if serve != "" {
-		must(zipserver.ServeZip(serve))
-		return
-	}
-
 	config, err := zipserver.LoadConfig(configFname)
 	must(err)
 
 	if dumpConfig {
 		fmt.Println(config)
+		return
+	}
+
+	if serve != "" {
+		must(zipserver.ServeZip(config, serve))
 		return
 	}
 
@@ -74,8 +75,10 @@ func main() {
 			randChars[i] = letters[rand.Intn(len(letters))]
 		}
 
-		files, err := archiver.UploadZipFromFile(extract, string(randChars), limits)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+		defer cancel()
 
+		files, err := archiver.UploadZipFromFile(ctx, extract, string(randChars), limits)
 		if err != nil {
 			log.Fatal(err.Error())
 			return

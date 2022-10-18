@@ -1,20 +1,23 @@
 package zipserver
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	errors "github.com/go-errors/errors"
 )
 
 type memoryHttpHandler struct {
-	storage *MemStorage
-	bucket  string
-	prefix  string
+	storage        *MemStorage
+	bucket         string
+	prefix         string
+	fileGetTimeout time.Duration
 }
 
 var _ http.Handler = (*memoryHttpHandler)(nil)
@@ -39,7 +42,10 @@ func (mhh *memoryHttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	objectPath := fmt.Sprintf("%s/%s", mhh.prefix, path)
 	log.Printf("Requesting %s", objectPath)
 
-	reader, err := mhh.storage.GetFile(mhh.bucket, objectPath)
+	ctx, cancel := context.WithTimeout(r.Context(), mhh.fileGetTimeout)
+	defer cancel()
+
+	reader, err := mhh.storage.GetFile(ctx, mhh.bucket, objectPath)
 	if err != nil {
 		printError(err)
 		w.WriteHeader(404)
@@ -73,8 +79,7 @@ func (mhh *memoryHttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 // ServeZip takes the path to zip file in the local fs and serves
 // it as http
-func ServeZip(serve string) error {
-	config := &defaultConfig
+func ServeZip(config *Config, serve string) error {
 	config.Bucket = "local"
 
 	storage, err := NewMemStorage()
@@ -87,8 +92,14 @@ func ServeZip(serve string) error {
 		return errors.Wrap(err, 0)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+	defer cancel()
+
+	putCtx, putCtxCancel := context.WithTimeout(ctx, time.Duration(config.FilePutTimeout))
+	defer putCtxCancel()
+
 	key := "serve.zip"
-	err = storage.PutFile(config.Bucket, key, reader, "application/zip")
+	err = storage.PutFile(putCtx, config.Bucket, key, reader, "application/zip")
 	if err != nil {
 		return errors.Wrap(err, 0)
 	}
@@ -96,12 +107,17 @@ func ServeZip(serve string) error {
 	archiver := &Archiver{storage, config}
 
 	prefix := "extracted"
-	_, err = archiver.ExtractZip(key, prefix, DefaultExtractLimits(config))
+	_, err = archiver.ExtractZip(ctx, key, prefix, DefaultExtractLimits(config))
 	if err != nil {
 		return errors.Wrap(err, 0)
 	}
 
-	handler := &memoryHttpHandler{storage, config.Bucket, prefix}
+	handler := &memoryHttpHandler{
+		storage:        storage,
+		bucket:         config.Bucket,
+		prefix:         prefix,
+		fileGetTimeout: time.Duration(config.FileGetTimeout),
+	}
 
 	s := &http.Server{
 		Addr:    "localhost:8091",

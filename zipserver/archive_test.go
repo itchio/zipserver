@@ -3,6 +3,7 @@ package zipserver
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -32,16 +33,17 @@ func emptyConfig() *Config {
 
 func Test_ExtractOnGCS(t *testing.T) {
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
+		ctx := context.Background()
 		archiver := &Archiver{storage, config}
 
 		r, err := os.Open("/home/leafo/code/go/etlua.zip")
 		assert.NoError(t, err)
 		defer r.Close()
 
-		err = storage.PutFile(config.Bucket, "zipserver_test/test.zip", r, "application/zip")
+		err = storage.PutFile(ctx, config.Bucket, "zipserver_test/test.zip", r, "application/zip")
 		assert.NoError(t, err)
 
-		_, err = archiver.ExtractZip("zipserver_test/test.zip", "zipserver_test/extract", testLimits())
+		_, err = archiver.ExtractZip(ctx, "zipserver_test/test.zip", "zipserver_test/extract", testLimits())
 		assert.NoError(t, err)
 	})
 }
@@ -73,6 +75,8 @@ func (zl *zipLayout) Write(t *testing.T, zw *zip.Writer) {
 }
 
 func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix string) {
+	ctx := context.Background()
+
 	for _, entry := range zl.entries {
 		func() {
 			name := entry.name
@@ -81,7 +85,7 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 			}
 
 			path := fmt.Sprintf("%s/%s", prefix, name)
-			reader, err := storage.GetFile(bucket, path)
+			reader, err := storage.GetFile(ctx, bucket, path)
 			if entry.ignored {
 				assert.Error(t, err)
 				assert.True(t, strings.Contains(err.Error(), "object not found"))
@@ -111,6 +115,8 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 func Test_ExtractInMemory(t *testing.T) {
 	config := emptyConfig()
 
+	ctx := context.Background()
+
 	storage, err := NewMemStorage()
 	assert.NoError(t, err)
 
@@ -118,7 +124,7 @@ func Test_ExtractInMemory(t *testing.T) {
 	prefix := "zipserver_test/mem_test_extracted"
 	zipPath := "mem_test.zip"
 
-	_, err = archiver.ExtractZip(zipPath, prefix, testLimits())
+	_, err = archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
 	assert.Error(t, err)
 
 	withZip := func(zl *zipLayout, cb func(zl *zipLayout)) {
@@ -131,7 +137,7 @@ func Test_ExtractInMemory(t *testing.T) {
 		err = zw.Close()
 		assert.NoError(t, err)
 
-		err = storage.PutFile(config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), "application/octet-stream")
+		err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), "application/octet-stream")
 		assert.NoError(t, err)
 
 		cb(zl)
@@ -210,7 +216,7 @@ func Test_ExtractInMemory(t *testing.T) {
 			},
 		},
 	}, func(zl *zipLayout) {
-		_, err := archiver.ExtractZip(zipPath, prefix, testLimits())
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
 		assert.NoError(t, err)
 
 		zl.Check(t, storage, config.Bucket, prefix)
@@ -228,7 +234,7 @@ func Test_ExtractInMemory(t *testing.T) {
 		limits := testLimits()
 		limits.MaxFileNameLength = 100
 
-		_, err := archiver.ExtractZip(zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "paths that are too long"))
 	})
@@ -245,7 +251,7 @@ func Test_ExtractInMemory(t *testing.T) {
 		limits := testLimits()
 		limits.MaxFileSize = 499
 
-		_, err := archiver.ExtractZip(zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "file that is too large"))
 	})
@@ -277,7 +283,7 @@ func Test_ExtractInMemory(t *testing.T) {
 		limits := testLimits()
 		limits.MaxNumFiles = 3
 
-		_, err := archiver.ExtractZip(zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "Too many files"))
 	})
@@ -309,7 +315,7 @@ func Test_ExtractInMemory(t *testing.T) {
 		limits := testLimits()
 		limits.MaxTotalSize = 6
 
-		_, err := archiver.ExtractZip(zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "zip too large"))
 	})
@@ -347,7 +353,7 @@ func Test_ExtractInMemory(t *testing.T) {
 	}, func(zl *zipLayout) {
 		limits := testLimits()
 
-		_, err := archiver.ExtractZip(zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "intentional failure"))
 

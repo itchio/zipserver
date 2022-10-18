@@ -1,6 +1,7 @@
 package zipserver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -63,17 +64,19 @@ func (c *GcsStorage) url(bucket, key, logName string) string {
 }
 
 // GetFile returns a reader for the contents of resource at bucket/key
-func (c *GcsStorage) GetFile(bucket, key string) (io.ReadCloser, error) {
+func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
 	httpClient, err := c.httpClient()
-
 	if err != nil {
 		return nil, err
 	}
 
 	url := c.url(bucket, key, "GET")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
 
-	res, err := httpClient.Get(url)
-
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +89,8 @@ func (c *GcsStorage) GetFile(bucket, key string) (io.ReadCloser, error) {
 }
 
 // PutFile uploads a file to GCS simply
-func (c *GcsStorage) PutFile(bucket, key string, contents io.Reader, mimeType string) error {
-	return c.PutFileWithSetup(bucket, key, contents, func(req *http.Request) error {
+func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, mimeType string) error {
+	return c.PutFileWithSetup(ctx, bucket, key, contents, func(req *http.Request) error {
 		req.Header.Add("Content-Type", mimeType)
 		req.Header.Add("x-goog-acl", "public-read")
 		return nil
@@ -95,27 +98,23 @@ func (c *GcsStorage) PutFile(bucket, key string, contents io.Reader, mimeType st
 }
 
 // PutFileWithSetup uploads a file to GCS letting the user set up the request first
-func (c *GcsStorage) PutFileWithSetup(bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
+func (c *GcsStorage) PutFileWithSetup(ctx context.Context, bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
 	httpClient, err := c.httpClient()
-
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequest("PUT", c.url(bucket, key, "PUT"), contents)
-
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.url(bucket, key, "PUT"), contents)
 	if err != nil {
 		return err
 	}
 
 	err = setup(req)
-
 	if err != nil {
 		return err
 	}
 
 	res, err := httpClient.Do(req)
-
 	if err != nil {
 		return err
 	}
@@ -134,22 +133,19 @@ func (c *GcsStorage) PutFileWithSetup(bucket, key string, contents io.Reader, se
 }
 
 // DeleteFile removes a file from a GCS bucket
-func (c *GcsStorage) DeleteFile(bucket, key string) error {
+func (c *GcsStorage) DeleteFile(ctx context.Context, bucket, key string) error {
 	httpClient, err := c.httpClient()
-
 	if err != nil {
 		return err
 	}
 
 	url := c.url(bucket, key, "DELETE")
-	req, err := http.NewRequest("DELETE", url, nil)
-
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
 		return err
 	}
 
 	res, err := httpClient.Do(req)
-
 	if err != nil {
 		return err
 	}
