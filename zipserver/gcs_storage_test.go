@@ -1,6 +1,7 @@
 package zipserver
 
 import (
+	"context"
 	"io"
 	"os"
 	"strings"
@@ -34,8 +35,10 @@ func withGoogleCloudStorage(t *testing.T, cb ClientFunc) {
 }
 
 func TestGetFile(t *testing.T) {
+	ctx := context.Background()
+
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
-		reader, err := storage.GetFile(config.Bucket, "text.txt")
+		reader, err := storage.GetFile(ctx, config.Bucket, "text.txt")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -55,14 +58,16 @@ func TestGetFile(t *testing.T) {
 }
 
 func TestPutAndDeleteFile(t *testing.T) {
+	ctx := context.Background()
+
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
-		err := storage.PutFile(config.Bucket, "zipserver_test.txt", strings.NewReader("hello zipserver!"), "text/plain")
+		err := storage.PutFile(ctx, config.Bucket, "zipserver_test.txt", strings.NewReader("hello zipserver!"), "text/plain")
 
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = storage.DeleteFile(config.Bucket, "zipserver_test.txt")
+		err = storage.DeleteFile(ctx, config.Bucket, "zipserver_test.txt")
 
 		if err != nil {
 			t.Fatal(err)

@@ -2,6 +2,7 @@ package zipserver
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,7 +42,7 @@ func (fs *MemStorage) objectPath(bucket, key string) string {
 }
 
 // GetFile implements Storage.GetFile for FsStorage
-func (fs *MemStorage) GetFile(bucket, key string) (io.ReadCloser, error) {
+func (fs *MemStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
@@ -70,15 +71,15 @@ func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
 }
 
 // PutFile implements Storage.PutFile for FsStorage
-func (fs *MemStorage) PutFile(bucket, key string, contents io.Reader, mimeType string) error {
-	return fs.PutFileWithSetup(bucket, key, contents, func(req *http.Request) error {
+func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, mimeType string) error {
+	return fs.PutFileWithSetup(ctx, bucket, key, contents, func(req *http.Request) error {
 		req.Header.Set("Content-Type", mimeType)
 		return nil
 	})
 }
 
 // PutFileWithSetup implements Storage.PutFileWithSetup for FsStorage
-func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
+func (fs *MemStorage) PutFileWithSetup(ctx context.Context, bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
@@ -89,7 +90,7 @@ func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, s
 
 	time.Sleep(fs.putDelay)
 
-	req, err := http.NewRequest("PUT", "http://127.0.0.1/dummy", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://127.0.0.1/dummy", nil)
 	if err != nil {
 		return errors.Wrap(err, 0)
 	}
@@ -113,7 +114,7 @@ func (fs *MemStorage) PutFileWithSetup(bucket, key string, contents io.Reader, s
 }
 
 // DeleteFile implements Storage.DeleteFile for FsStorage
-func (fs *MemStorage) DeleteFile(bucket, key string) error {
+func (fs *MemStorage) DeleteFile(ctx context.Context, bucket, key string) error {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 

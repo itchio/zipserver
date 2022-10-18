@@ -1,15 +1,21 @@
 package zipserver
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 func slurpHandler(w http.ResponseWriter, r *http.Request) error {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.JobTimeout))
+	defer cancel()
+
 	params := r.URL.Query()
 
 	key, err := getParam(params, "key")
@@ -35,11 +41,18 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 
-	process := func() error {
-		log.Print("Fetching URL: ", slurpURL)
-		client := http.Client{}
-		res, err := client.Get(slurpURL)
+	process := func(ctx context.Context) error {
+		getCtx, cancel := context.WithTimeout(ctx, time.Duration(config.FileGetTimeout))
+		defer cancel()
 
+		log.Print("Fetching URL: ", slurpURL)
+
+		req, err := http.NewRequestWithContext(getCtx, http.MethodGet, slurpURL, nil)
+		if err != nil {
+			return err
+		}
+
+		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return err
 		}
@@ -80,7 +93,10 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 			log.Fatal("Failed to create storage:", err)
 		}
 
-		return storage.PutFileWithSetup(config.Bucket, key, body, func(req *http.Request) error {
+		putCtx, cancel := context.WithTimeout(ctx, time.Duration(config.FilePutTimeout))
+		defer cancel()
+
+		return storage.PutFileWithSetup(putCtx, config.Bucket, key, body, func(req *http.Request) error {
 			req.Header.Add("Content-Type", contentType)
 
 			if contentDisposition != "" {
@@ -94,7 +110,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 
 	asyncURL := params.Get("async")
 	if asyncURL == "" {
-		err = process()
+		err = process(ctx)
 		if err != nil {
 			return writeJSONError(w, "SlurpError", err)
 		}
@@ -105,7 +121,10 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	go (func() {
-		err = process()
+		// This job is expected to outlive the incoming request, so create a detached context.
+		ctx := context.Background()
+
+		err = process(ctx)
 		log.Print("Notifying " + asyncURL)
 
 		resValues := url.Values{}
@@ -116,7 +135,17 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 			resValues.Add("Success", "true")
 		}
 
-		_, err = http.PostForm(asyncURL, resValues)
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(config.AsyncNotificationTimeout))
+		defer cancel()
+
+		outBody := bytes.NewBufferString(resValues.Encode())
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, asyncURL, outBody)
+		if err != nil {
+			log.Printf("Failed to create callback request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		_, err = http.DefaultClient.Do(req)
 		if err != nil {
 			log.Print("Failed to deliver callback: " + err.Error())
 		}

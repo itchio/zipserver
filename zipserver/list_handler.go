@@ -3,9 +3,11 @@ package zipserver
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
+	"time"
 )
 
 type fileTuple struct {
@@ -31,14 +33,13 @@ func listZip(body []byte, w http.ResponseWriter, r *http.Request) error {
 	return writeJSONMessage(w, filesOut)
 }
 
-func listFromBucket(key string, w http.ResponseWriter, r *http.Request) error {
+func listFromBucket(ctx context.Context, key string, w http.ResponseWriter, r *http.Request) error {
 	storage, err := NewGcsStorage(config)
-
 	if storage == nil {
 		return err
 	}
 
-	reader, err := storage.GetFile(config.Bucket, key)
+	reader, err := storage.GetFile(ctx, config.Bucket, key)
 	if err != nil {
 		return err
 	}
@@ -46,7 +47,6 @@ func listFromBucket(key string, w http.ResponseWriter, r *http.Request) error {
 	defer reader.Close()
 
 	body, err := io.ReadAll(reader)
-
 	if err != nil {
 		return err
 	}
@@ -54,31 +54,40 @@ func listFromBucket(key string, w http.ResponseWriter, r *http.Request) error {
 	return listZip(body, w, r)
 }
 
-func listFromUrl(url string, w http.ResponseWriter, r *http.Request) error {
-	response, err := http.Get(url)
+func listFromUrl(ctx context.Context, url string, w http.ResponseWriter, r *http.Request) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+
+	response, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
 
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
 
 	return listZip(body, w, r)
 }
 
 func listHandler(w http.ResponseWriter, r *http.Request) error {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.FileGetTimeout))
+	defer cancel()
+
 	params := r.URL.Query()
 
 	key, err := getParam(params, "key")
-
 	if err == nil {
-		return listFromBucket(key, w, r)
+		return listFromBucket(ctx, key, w, r)
 	}
 
 	url, err := getParam(params, "url")
-
 	if err == nil {
-		return listFromUrl(url, w, r)
+		return listFromUrl(ctx, url, w, r)
 	}
 
 	return errors.New("missing key or url")

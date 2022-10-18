@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	errors "github.com/go-errors/errors"
 )
@@ -33,6 +34,11 @@ type Config struct {
 	MaxNumFiles       int
 	MaxFileNameLength int
 	ExtractionThreads int
+
+	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
+	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object
+	FilePutTimeout           Duration `json:",omitempty"` // Time to upload a single object
+	AsyncNotificationTimeout Duration `json:",omitempty"` // Time to complete webhook request
 }
 
 var defaultConfig = Config{
@@ -41,6 +47,33 @@ var defaultConfig = Config{
 	MaxNumFiles:       100,
 	MaxFileNameLength: 80,
 	ExtractionThreads: 4,
+
+	JobTimeout:               Duration(3 * time.Minute),
+	FileGetTimeout:           Duration(10 * time.Second),
+	FilePutTimeout:           Duration(20 * time.Second),
+	AsyncNotificationTimeout: Duration(5 * time.Second),
+}
+
+// Duration adds JSON (de)serialization to time.Duration.
+// This should be fixed in Go 2.
+// https://github.com/golang/go/issues/10275
+type Duration time.Duration
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
+}
+
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	dur, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+	*d = Duration(dur)
+	return nil
 }
 
 // LoadConfig reads a config file into a config struct
@@ -52,7 +85,6 @@ func LoadConfig(fname string) (*Config, error) {
 
 	config := defaultConfig
 	err = json.Unmarshal(jsonBlob, &config)
-
 	if err != nil {
 		return nil, fmt.Errorf("Failed parsing config file %s: %s", fname, err.Error())
 	}
