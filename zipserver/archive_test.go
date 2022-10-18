@@ -40,20 +40,22 @@ func emptyConfig() *Config {
 	}
 }
 
+var analyzer = &GameAnalyzer{}
+
 func Test_ExtractOnGCS(t *testing.T) {
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
 		ctx := context.Background()
 		archiver := &Archiver{storage, config}
 
 		r, err := os.Open("/home/leafo/code/go/etlua.zip")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer r.Close()
 
 		err = storage.PutFile(ctx, config.Bucket, "zipserver_test/test.zip", r, "application/zip")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
-		_, err = archiver.ExtractZip(ctx, "zipserver_test/test.zip", "zipserver_test/extract", testLimits())
-		assert.NoError(t, err)
+		_, err = archiver.ExtractZip(ctx, "zipserver_test/test.zip", "zipserver_test/extract", testLimits(), analyzer)
+		require.NoError(t, err)
 	})
 }
 
@@ -76,18 +78,18 @@ func (zl *zipLayout) Write(t *testing.T, zw *zip.Writer) {
 			Name:               entry.name,
 			UncompressedSize64: uint64(len(entry.data)),
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = io.Copy(writer, bytes.NewReader(entry.data))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 }
 
 func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix string) {
 	ctx := context.Background()
 
-	for _, entry := range zl.entries {
-		func() {
+	for i, entry := range zl.entries {
+		t.Run(fmt.Sprintf("file %d: %s", i, entry.name), func(t *testing.T) {
 			name := entry.name
 			if entry.outName != "" {
 				name = entry.outName
@@ -101,23 +103,23 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			defer reader.Close()
 
 			data, err := io.ReadAll(reader)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.EqualValues(t, data, entry.data)
 
 			h, err := storage.getHeaders(bucket, path)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.EqualValues(t, entry.expectedMimeType, h.Get("content-type"))
 			assert.EqualValues(t, "public-read", h.Get("x-goog-acl"))
 
 			if entry.expectedContentEncoding != "" {
 				assert.EqualValues(t, entry.expectedContentEncoding, h.Get("content-encoding"))
 			}
-		}()
+		})
 	}
 }
 
@@ -127,13 +129,13 @@ func Test_ExtractInMemory(t *testing.T) {
 	ctx := context.Background()
 
 	storage, err := NewMemStorage()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	archiver := &Archiver{storage, config}
 	prefix := "zipserver_test/mem_test_extracted"
 	zipPath := "mem_test.zip"
 
-	_, err = archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+	_, err = archiver.ExtractZip(ctx, zipPath, prefix, testLimits(), analyzer)
 	assert.Error(t, err)
 
 	withZip := func(zl *zipLayout, cb func(zl *zipLayout)) {
@@ -144,96 +146,96 @@ func Test_ExtractInMemory(t *testing.T) {
 		zl.Write(t, zw)
 
 		err = zw.Close()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), "application/octet-stream")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		cb(zl)
 	}
 
 	withZip(&zipLayout{
 		entries: []zipEntry{
-			zipEntry{
+			{
 				name:             "file.txt",
 				data:             []byte("Hello there"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "garbage.bin",
 				data:             bytes.Repeat([]byte{3, 1, 5, 3, 2, 6, 1, 2, 5, 3, 4, 6, 2}, 20),
 				expectedMimeType: "application/octet-stream",
 			},
-			zipEntry{
+			{
 				name:             "something.gz",
 				data:             []byte{0x1F, 0x8B, 0x08, 1, 5, 2, 4, 9, 3, 1, 2, 5},
 				expectedMimeType: "application/gzip",
 			},
-			zipEntry{
+			{
 				name:                    "something.unityweb",
 				data:                    []byte{0x1F, 0x8B, 0x08, 9, 1, 5, 2, 3, 5, 2, 6, 4, 4},
 				expectedMimeType:        "application/octet-stream",
 				expectedContentEncoding: "gzip",
 			},
-			zipEntry{
+			{
 				name:                    "gamedata.memgz",
 				outName:                 "gamedata.mem",
 				data:                    []byte{0x1F, 0x8B, 0x08, 1, 5, 2, 3, 1, 2, 1, 2},
 				expectedMimeType:        "application/octet-stream",
 				expectedContentEncoding: "gzip",
 			},
-			zipEntry{
+			{
 				name:                    "gamedata.jsgz",
 				outName:                 "gamedata.js",
 				data:                    []byte{0x1F, 0x8B, 0x08, 3, 7, 3, 4, 12, 53, 26, 34},
 				expectedMimeType:        "application/octet-stream",
 				expectedContentEncoding: "gzip",
 			},
-			zipEntry{
+			{
 				name:                    "gamedata.asm.jsgz",
 				outName:                 "gamedata.asm.js",
 				data:                    []byte{0x1F, 0x8B, 0x08, 62, 34, 128, 37, 10, 39, 82},
 				expectedMimeType:        "application/octet-stream",
 				expectedContentEncoding: "gzip",
 			},
-			zipEntry{
+			{
 				name:                    "gamedata.datagz",
 				outName:                 "gamedata.data",
 				data:                    []byte{0x1F, 0x8B, 0x08, 8, 5, 23, 1, 25, 38},
 				expectedMimeType:        "application/octet-stream",
 				expectedContentEncoding: "gzip",
 			},
-			zipEntry{
+			{
 				name:    "__MACOSX/hello",
 				data:    []byte{},
 				ignored: true,
 			},
-			zipEntry{
+			{
 				name:    "/woops/hi/im/absolute",
 				data:    []byte{},
 				ignored: true,
 			},
-			zipEntry{
+			{
 				name:    "oh/hey/im/a/dir/",
 				data:    []byte{},
 				ignored: true,
 			},
-			zipEntry{
+			{
 				name:    "im/trying/to/escape/../../../../../../etc/hosts",
 				data:    []byte{},
 				ignored: true,
 			},
 		},
 	}, func(zl *zipLayout) {
-		_, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
-		assert.NoError(t, err)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits(), analyzer)
+		require.NoError(t, err)
 
 		zl.Check(t, storage, config.Bucket, prefix)
 	})
 
 	withZip(&zipLayout{
 		entries: []zipEntry{
-			zipEntry{
+			{
 				name:             strings.Repeat("x", 101),
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
@@ -243,14 +245,14 @@ func Test_ExtractInMemory(t *testing.T) {
 		limits := testLimits()
 		limits.MaxFileNameLength = 100
 
-		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits, analyzer)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "paths that are too long"))
 	})
 
 	withZip(&zipLayout{
 		entries: []zipEntry{
-			zipEntry{
+			{
 				name:             "x",
 				data:             bytes.Repeat([]byte("oh no"), 100),
 				expectedMimeType: "text/plain; charset=utf-8",
@@ -260,29 +262,29 @@ func Test_ExtractInMemory(t *testing.T) {
 		limits := testLimits()
 		limits.MaxFileSize = 499
 
-		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits, analyzer)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "file that is too large"))
 	})
 
 	withZip(&zipLayout{
 		entries: []zipEntry{
-			zipEntry{
+			{
 				name:             "1",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "2",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "3",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "4",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
@@ -292,29 +294,29 @@ func Test_ExtractInMemory(t *testing.T) {
 		limits := testLimits()
 		limits.MaxNumFiles = 3
 
-		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits, analyzer)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "Too many files"))
 	})
 
 	withZip(&zipLayout{
 		entries: []zipEntry{
-			zipEntry{
+			{
 				name:             "1",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "2",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "3",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "4",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
@@ -324,36 +326,36 @@ func Test_ExtractInMemory(t *testing.T) {
 		limits := testLimits()
 		limits.MaxTotalSize = 6
 
-		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits, analyzer)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "zip too large"))
 	})
 
 	// reset storage for this next test
 	storage, err = NewMemStorage()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	storage.planForFailure(config.Bucket, fmt.Sprintf("%s/%s", prefix, "3"))
 	storage.putDelay = 200 * time.Millisecond
 	archiver = &Archiver{storage, config}
 
 	withZip(&zipLayout{
 		entries: []zipEntry{
-			zipEntry{
+			{
 				name:             "1",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "2",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "3",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
 			},
-			zipEntry{
+			{
 				name:             "4",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
@@ -362,7 +364,7 @@ func Test_ExtractInMemory(t *testing.T) {
 	}, func(zl *zipLayout) {
 		limits := testLimits()
 
-		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits, analyzer)
 		assert.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "intentional failure"))
 
@@ -370,6 +372,47 @@ func Test_ExtractInMemory(t *testing.T) {
 		for k := range storage.objects {
 			assert.EqualValues(t, k, storage.objectPath(config.Bucket, zipPath), "make sure the only remaining object is the zip")
 		}
+	})
+
+	storage, err = NewMemStorage()
+
+	withZip(&zipLayout{
+		entries: []zipEntry{
+			{
+				name:             "a/b/c/file1",
+				data:             []byte("data"),
+				expectedMimeType: "text/plain; charset=utf-8",
+			},
+			{
+				name:             "file2.txt",
+				data:             []byte("data"),
+				expectedMimeType: "text/plain; charset=utf-8",
+			},
+			{
+				name:             "a/b/c.other",
+				data:             []byte("data"),
+				expectedMimeType: "text/plain; charset=utf-8",
+			},
+			{
+				name:             "file4",
+				data:             []byte("data"),
+				expectedMimeType: "text/plain; charset=utf-8",
+			},
+		},
+	}, func(zl *zipLayout) {
+		limits := testLimits()
+		require.NoError(t, err)
+		archiver = &Archiver{storage, config}
+		analyzer = &GameAnalyzer{
+			onlyExtractFiles: []string{"a/b/c.other", "a/b/nonexistent", "file2.txt"},
+		}
+
+		res, err := archiver.ExtractZip(ctx, zipPath, prefix, limits, analyzer)
+		require.NoError(t, err)
+		// Can't compare the entire slice verbatim because of nondeterministic workload order
+		assert.Len(t, res, 2)
+		assert.Contains(t, res, ExtractedFile{Key: "zipserver_test/mem_test_extracted/file2.txt", Size: 4})
+		assert.Contains(t, res, ExtractedFile{Key: "zipserver_test/mem_test_extracted/a/b/c.other", Size: 4})
 	})
 }
 

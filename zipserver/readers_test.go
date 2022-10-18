@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_annotatedReader(t *testing.T) {
@@ -23,7 +24,7 @@ func Test_annotatedReader(t *testing.T) {
 		if err == io.EOF {
 			break
 		}
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	assert.EqualValues(t, len(s), totalBytes)
 }
@@ -36,7 +37,7 @@ func Test_limitedReader(t *testing.T) {
 	lr := limitedReader(sr, 128, &totalBytes)
 
 	result, err := io.ReadAll(lr)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.EqualValues(t, s, string(result))
 	assert.EqualValues(t, len(s), totalBytes)
 
