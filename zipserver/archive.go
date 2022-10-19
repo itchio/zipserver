@@ -55,16 +55,19 @@ func NewArchiver(config *Config) *Archiver {
 	return &Archiver{storage, config}
 }
 
+func fetchZipFilename(bucket, key string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(key))
+	return bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
+}
+
 func (a *Archiver) fetchZip(ctx context.Context, key string) (string, error) {
 	os.MkdirAll(tmpDir, os.ModeDir|0777)
 
-	hasher := md5.New()
-	hasher.Write([]byte(key))
-	fname := a.Bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
+	fname := fetchZipFilename(a.Bucket, key)
 	fname = path.Join(tmpDir, fname)
 
 	src, err := a.Storage.GetFile(ctx, a.Bucket, key)
-
 	if err != nil {
 		return "", errors.Wrap(err, 0)
 	}
@@ -72,12 +75,18 @@ func (a *Archiver) fetchZip(ctx context.Context, key string) (string, error) {
 	defer src.Close()
 
 	dest, err := os.Create(fname)
-
 	if err != nil {
 		return "", errors.Wrap(err, 0)
 	}
+	_, err = os.Stat(fname)
 
-	defer dest.Close()
+	defer func() {
+		dest.Close()
+		// Clean up if io.Copy below errs.
+		if err != nil {
+			os.Remove(fname)
+		}
+	}()
 
 	_, err = io.Copy(dest, src)
 	if err != nil {
