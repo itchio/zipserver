@@ -4,14 +4,20 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func testLimits() *ExtractLimits {
@@ -365,4 +371,74 @@ func Test_ExtractInMemory(t *testing.T) {
 			assert.EqualValues(t, k, storage.objectPath(config.Bucket, zipPath), "make sure the only remaining object is the zip")
 		}
 	})
+}
+
+// TestFetchZipFailing simulates a download failing after the ouptut file has been created,
+// and makes sure the incomplete file is removed.
+func TestFetchZipFailing(t *testing.T) {
+	rand.Seed(time.Now().Unix())
+	bucket := "bucket" + strconv.Itoa(rand.Int())
+	key := "key" + strconv.Itoa(rand.Int())
+	path := fetchZipFilename(bucket, key)
+	path = filepath.Join(tmpDir, path)
+	require.False(t, fileExists(path), "test output file existed ahead of time")
+	t.Logf("temp file: %s", path)
+
+	a := &Archiver{
+		Storage: &mockFailingStorage{t, path},
+		Config: &Config{
+			Bucket: bucket,
+		},
+	}
+
+	ctx := context.Background()
+	_, err := a.fetchZip(ctx, key)
+	assert.EqualError(t, err, "intentional failure")
+	assert.False(t, fileExists(path), "file should have been removed")
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	panic("unexpected error from stat: " + err.Error())
+}
+
+type mockFailingStorage struct {
+	t    *testing.T
+	path string
+}
+
+func (m *mockFailingStorage) GetFile(_ context.Context, _, _ string) (io.ReadCloser, error) {
+	return &mockFailingReadCloser{m.t, m.path}, nil
+}
+
+func (m *mockFailingStorage) PutFile(_ context.Context, _, _ string, contents io.Reader, _ string) error {
+	return nil
+}
+
+func (m *mockFailingStorage) PutFileWithSetup(_ context.Context, _, _ string, contents io.Reader, _ StorageSetupFunc) error {
+	return nil
+}
+
+func (m *mockFailingStorage) DeleteFile(_ context.Context, _, _ string) error {
+	return nil
+}
+
+type mockFailingReadCloser struct {
+	t    *testing.T
+	path string
+}
+
+func (m *mockFailingReadCloser) Read(p []byte) (int, error) {
+	assert.True(m.t, fileExists(m.path), "file should have been created")
+	return 0, errors.New("intentional failure")
+}
+
+func (m *mockFailingReadCloser) Close() error {
+	return nil
 }
