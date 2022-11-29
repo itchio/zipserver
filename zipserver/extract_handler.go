@@ -3,8 +3,10 @@ package zipserver
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -93,6 +95,20 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	fileListParam := params.Get("only_files")
+	if err != nil {
+		return err
+	}
+	var fileList []string
+	if fileListParam != "" {
+		if err := json.Unmarshal([]byte(fileListParam), &fileList); err != nil {
+			return fmt.Errorf("unmarshal files param: %w", err)
+		}
+		if len(fileList) == 0 {
+			return fmt.Errorf("fileList param was empty")
+		}
+	}
+
 	hasLock := tryLockKey(key)
 	if !hasLock {
 		// already being extracted in another handler, ask consumer to wait
@@ -101,9 +117,13 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 
 	limits := loadLimits(params, config)
 
+	analyzer := &GameAnalyzer{
+		onlyExtractFiles: fileList,
+	}
+
 	process := func(ctx context.Context) ([]ExtractedFile, error) {
 		archiver := NewArchiver(config)
-		files, err := archiver.ExtractZip(ctx, key, prefix, limits)
+		files, err := archiver.ExtractZip(ctx, key, prefix, limits, analyzer)
 
 		return files, err
 	}
@@ -171,11 +191,19 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		asyncResponse, err := http.DefaultClient.Do(req)
-		if err == nil {
-			asyncResponse.Body.Close()
-		} else {
-			log.Print("Failed to deliver callback: " + err.Error())
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			log.Printf("Failed to deliver callback: %v", err)
+			return
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				log.Printf("Read notification response: %v", err)
+				return
+			}
+			log.Printf("Notification response: %s %s", res.Status, string(body))
 		}
 	})()
 

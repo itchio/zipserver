@@ -145,9 +145,19 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		_, err = http.DefaultClient.Do(req)
+		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			log.Print("Failed to deliver callback: " + err.Error())
+			log.Printf("Failed to deliver callback: %v", err)
+			return
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				log.Printf("Read notification response: %v", err)
+				return
+			}
+			log.Printf("Notification response: %s %s", res.Status, string(body))
 		}
 	})()
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Config(t *testing.T) {
@@ -18,22 +19,20 @@ func Test_Config(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	writeConfigBytes := func(bytes []byte) {
+		t.Helper()
+
 		_, err := tmpFile.Seek(0, os.SEEK_SET)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		_, err = tmpFile.Write(bytes)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 
 	writeConfig := func(c *Config) {
+		t.Helper()
+
 		bytes, err := json.Marshal(c)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		writeConfigBytes(bytes)
 	}
 
@@ -75,7 +74,7 @@ func Test_Config(t *testing.T) {
 	})
 
 	c, err := LoadConfig(tmpFile.Name())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.EqualValues(t, "/foo/bar.pem", c.PrivateKeyPath)
 	assert.EqualValues(t, 92, c.MaxFileSize)

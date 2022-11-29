@@ -107,7 +107,8 @@ func ServeZip(config *Config, serve string) error {
 	archiver := &Archiver{storage, config}
 
 	prefix := "extracted"
-	_, err = archiver.ExtractZip(ctx, key, prefix, DefaultExtractLimits(config))
+	// TODO: Add CLI option to choose game or music content.
+	_, err = archiver.ExtractZip(ctx, key, prefix, DefaultExtractLimits(config), &GameAnalyzer{})
 	if err != nil {
 		return errors.Wrap(err, 0)
 	}

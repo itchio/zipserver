@@ -3,6 +3,7 @@ module github.com/itchio/zipserver
 go 1.17
 
 require (
+	github.com/dhowden/tag v0.0.0-20220618230019-adf36e896086
 	github.com/go-errors/errors v1.4.2
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
