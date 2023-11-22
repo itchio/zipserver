@@ -3,18 +3,20 @@ module github.com/itchio/zipserver
 go 1.17
 
 require (
-	github.com/go-errors/errors v1.4.2
-	github.com/stretchr/testify v1.7.0
-	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8
+	github.com/aws/aws-sdk-go v1.48.2
+	github.com/go-errors/errors v1.5.1
+	github.com/stretchr/testify v1.8.4
+	golang.org/x/oauth2 v0.14.0
 )
 
 require (
 	cloud.google.com/go v0.65.0 // indirect
-	github.com/davecgh/go-spew v1.1.0 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	golang.org/x/net v0.0.0-20220121210141-e204ce36a2ba // indirect
+	golang.org/x/net v0.18.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/protobuf v1.27.1 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
+	google.golang.org/protobuf v1.31.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
