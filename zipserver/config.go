@@ -35,6 +35,11 @@ type Config struct {
 	MaxFileNameLength int
 	ExtractionThreads int
 
+	S3AccessKeyID string `json:",omitempty"`
+	S3SecretKey   string `json:",omitempty"`
+	S3Endpoint    string `json:",omitempty"`
+	S3Bucket      string `json:",omitempty"`
+
 	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
 	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object
 	FilePutTimeout           Duration `json:",omitempty"` // Time to upload a single object
