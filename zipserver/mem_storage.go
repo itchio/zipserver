@@ -1,5 +1,9 @@
 package zipserver
 
+// MemStorage implements Storage interface in memory, storing objects in a map.
+// This is used for the serving of a zip file over http. Keep in mind extracted
+// zips are stored forever, this should only be used for testing or one-off use
+
 import (
 	"bytes"
 	"context"

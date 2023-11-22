@@ -102,3 +102,18 @@ func (c *S3Storage) HeadFile(ctx context.Context, bucket, key string) (url.Value
 
 	return out, nil
 }
+
+func (c *S3Storage) DeleteFile(ctx context.Context, bucket, key string) error {
+	svc := s3.New(c.Session)
+	input := &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}
+
+	_, err := svc.DeleteObjectWithContext(ctx, input)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -87,13 +87,13 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		storage, err := NewGcsStorage(config)
 
 		if storage == nil {
-			log.Fatal("Failed to create storage: ", err)
+			log.Fatal("Failed to create source (GCS) storage: ", err)
 		}
 
 		targetStorage, err := NewS3Storage(config)
 
 		if storage == nil {
-			log.Fatal("Failed to create storage: ", err)
+			log.Fatal("Failed to create target (S3) storage: ", err)
 		}
 
 		startTime := time.Now()
