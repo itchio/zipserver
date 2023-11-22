@@ -2,9 +2,7 @@ package zipserver
 
 import (
 	"context"
-	"encoding/json"
 	"io"
-	"log"
 	"net/url"
 	"strconv"
 
@@ -71,11 +69,6 @@ func (c *S3Storage) HeadFile(ctx context.Context, bucket, key string) (url.Value
 	result, err := svc.HeadObjectWithContext(ctx, input)
 	if err != nil {
 		return nil, err
-	}
-
-	headJson, err := json.Marshal(result)
-	if err == nil {
-		log.Print("Head", string(headJson))
 	}
 
 	out := url.Values{}
