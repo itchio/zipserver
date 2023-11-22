@@ -42,13 +42,13 @@ func (lt *LockTable) releaseKey(key string) {
 	delete(lt.openKeys, key)
 }
 
-// GetLocks returns the keys currently held by the lock table
 type KeyInfo struct {
 	Key           string
 	LockedAt      time.Time
 	LockedSeconds float64
 }
 
+// returns summary of held locks for debugging purposes
 func (lt *LockTable) GetLocks() []KeyInfo {
 	lt.Lock()
 	defer lt.Unlock()
