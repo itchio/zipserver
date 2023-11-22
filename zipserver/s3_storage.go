@@ -27,6 +27,7 @@ func NewS3Storage(config *Config) (*S3Storage, error) {
 	sess, err := session.NewSession(&aws.Config{
 		Credentials: creds,
 		Endpoint:    aws.String(config.S3Endpoint),
+		Region:      aws.String(config.S3Region),
 	})
 
 	if err != nil {

@@ -39,6 +39,7 @@ type Config struct {
 	S3SecretKey   string `json:",omitempty"`
 	S3Endpoint    string `json:",omitempty"`
 	S3Bucket      string `json:",omitempty"`
+	S3Region      string `json:",omitempty"`
 
 	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
 	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object

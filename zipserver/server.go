@@ -12,9 +12,9 @@ import (
 
 var config *Config
 
-type errorHandler func(http.ResponseWriter, *http.Request) error
+type wrapErrors func(http.ResponseWriter, *http.Request) error
 
-func (fn errorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (fn wrapErrors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := fn(w, r); err != nil {
 		http.Error(w, err.Error(), 500)
 	}
@@ -76,19 +76,35 @@ func writeJSONError(w http.ResponseWriter, kind string, err error) error {
 	}{kind, err.Error()})
 }
 
+func statusHandler(w http.ResponseWriter, r *http.Request) error {
+	copyKeys := copyLockTable.GetLocks()
+	extractKeys := extractLockTable.GetLocks()
+
+	return writeJSONMessage(w, struct {
+		CopyLocks    []KeyInfo `json:"copy_locks"`
+		ExtractLocks []KeyInfo `json:"extract_locks"`
+	}{
+		CopyLocks:    copyKeys,
+		ExtractLocks: extractKeys,
+	})
+}
+
 // StartZipServer starts listening for extract and slurp requests
 func StartZipServer(listenTo string, _config *Config) error {
 	config = _config
 
 	// Extract a .zip file (downloaded from GCS), stores each
 	// individual file on GCS in a given bucket/prefix
-	http.Handle("/extract", errorHandler(extractHandler))
+	http.Handle("/extract", wrapErrors(extractHandler))
+
+	http.Handle("/copy", wrapErrors(copyHandler))
+	http.Handle("/status", wrapErrors(statusHandler))
 
 	// show the files in the zip
-	http.Handle("/list", errorHandler(listHandler))
+	http.Handle("/list", wrapErrors(listHandler))
 
 	// Download a file from an http{,s} URL and store it on GCS
-	http.Handle("/slurp", errorHandler(slurpHandler))
+	http.Handle("/slurp", wrapErrors(slurpHandler))
 
 	log.Print("Listening on: " + listenTo)
 	return http.ListenAndServe(listenTo, nil)
