@@ -12,40 +12,45 @@ import (
 	"time"
 )
 
-var shared struct {
+type LockTable struct {
 	// maps aren't thread-safe in golang, this protects openKeys
 	sync.Mutex
 	// empty struct is zero-width, we're using that map as a set (no values)
 	openKeys map[string]struct{}
 }
 
-func init() {
-	shared.openKeys = make(map[string]struct{})
+func NewLockTable() *LockTable {
+	return &LockTable{
+		openKeys: make(map[string]struct{}),
+	}
 }
 
 // tryLockKey tries acquiring the lock for a given key
 // it returns true if we successfully acquired the lock,
 // false if the key is locked by someone else
-func tryLockKey(key string) bool {
-	shared.Lock()
-	defer shared.Unlock()
+func (lt *LockTable) tryLockKey(key string) bool {
+	lt.Lock()
+	defer lt.Unlock()
 
 	// test for key existence
-	if _, ok := shared.openKeys[key]; ok {
+	if _, ok := lt.openKeys[key]; ok {
 		// locked by someone else
 		return false
 	}
-	shared.openKeys[key] = struct{}{}
+	lt.openKeys[key] = struct{}{}
 	return true
 }
 
-func releaseKey(key string) {
-	shared.Lock()
-	defer shared.Unlock()
+func (lt *LockTable) releaseKey(key string) {
+	lt.Lock()
+	defer lt.Unlock()
 
 	// delete key from map so the map doesn't keep growing
-	delete(shared.openKeys, key)
+	delete(lt.openKeys, key)
 }
+
+// create static instance of LockTable for this code file to use
+var extractLockTable = NewLockTable()
 
 func loadLimits(params url.Values, config *Config) *ExtractLimits {
 	limits := DefaultExtractLimits(config)
@@ -93,7 +98,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	hasLock := tryLockKey(key)
+	hasLock := extractLockTable.tryLockKey(key)
 	if !hasLock {
 		// already being extracted in another handler, ask consumer to wait
 		return writeJSONMessage(w, struct{ Processing bool }{true})
@@ -111,7 +116,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	// sync codepath
 	asyncURL := params.Get("async")
 	if asyncURL == "" {
-		defer releaseKey(key)
+		defer extractLockTable.releaseKey(key)
 
 		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.JobTimeout))
 		defer cancel()
@@ -129,7 +134,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 
 	// async codepath
 	go (func() {
-		defer releaseKey(key)
+		defer extractLockTable.releaseKey(key)
 
 		// This job is expected to outlive the incoming request, so create a detached context.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
