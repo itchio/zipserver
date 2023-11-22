@@ -2,7 +2,11 @@ package zipserver
 
 import (
 	"context"
+	"encoding/json"
 	"io"
+	"log"
+	"net/url"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -54,4 +58,38 @@ func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io
 	}
 
 	return nil
+}
+
+// get some specific metadata for file
+func (c *S3Storage) HeadFile(ctx context.Context, bucket, key string) (url.Values, error) {
+	svc := s3.New(c.Session)
+	input := &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}
+
+	result, err := svc.HeadObjectWithContext(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	headJson, err := json.Marshal(result)
+	if err == nil {
+		log.Print("Head", string(headJson))
+	}
+
+	out := url.Values{}
+	if result.ChecksumSHA256 != nil {
+		out.Add("ChecksumSHA256", *result.ChecksumSHA256)
+	}
+
+	if result.ContentType != nil {
+		out.Add("ContentType", *result.ContentType)
+	}
+
+	if result.ContentLength != nil {
+		out.Add("ContentLength", strconv.FormatInt(*result.ContentLength, 10))
+	}
+
+	return out, nil
 }
