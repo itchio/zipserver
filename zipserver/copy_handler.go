@@ -66,7 +66,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	go (func() {
-		defer extractLockTable.releaseKey(key)
+		defer copyLockTable.releaseKey(key)
 
 		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
 		defer cancel()
