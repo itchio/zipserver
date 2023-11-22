@@ -2,6 +2,8 @@ package zipserver
 
 import (
 	"context"
+	"crypto/md5"
+	"fmt"
 	"io"
 	"net/url"
 	"strconv"
@@ -41,21 +43,35 @@ func NewS3Storage(config *Config) (*S3Storage, error) {
 	}, nil
 }
 
-func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, mimeType string) error {
+// upload file and return md5 checksum of transferred bytes
+func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, mimeType string) (string, error) {
 	uploader := s3manager.NewUploaderWithClient(s3.New(c.Session))
+
+	// Initialize a new MD5 hash.
+	hash := md5.New()
+
+	// Create a multi-reader that will read from the original reader and also
+	// perform the hash.
+	multi := io.TeeReader(contents, hash)
 
 	_, err := uploader.UploadWithContext(ctx, &s3manager.UploadInput{
 		Bucket:      aws.String(bucket),
 		Key:         aws.String(key),
-		Body:        contents,
+		Body:        multi,
 		ContentType: aws.String(mimeType),
 	})
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	// Compute the checksum from the hash.
+	checksum := hash.Sum(nil)
+
+	// Convert the checksum to a hexadecimal string.
+	checksumStr := fmt.Sprintf("%x", checksum)
+
+	return checksumStr, nil
 }
 
 // get some specific metadata for file
