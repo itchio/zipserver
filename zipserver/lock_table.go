@@ -44,9 +44,9 @@ func (lt *LockTable) releaseKey(key string) {
 
 // GetLocks returns the keys currently held by the lock table
 type KeyInfo struct {
-	Key       string
-	LockedAt  time.Time
-	LockedFor time.Duration
+	Key           string
+	LockedAt      time.Time
+	LockedSeconds float64
 }
 
 func (lt *LockTable) GetLocks() []KeyInfo {
@@ -56,9 +56,9 @@ func (lt *LockTable) GetLocks() []KeyInfo {
 	keys := make([]KeyInfo, 0, len(lt.openKeys))
 	for key, lockedAt := range lt.openKeys {
 		keys = append(keys, KeyInfo{
-			Key:       key,
-			LockedAt:  lockedAt,
-			LockedFor: time.Since(lockedAt),
+			Key:           key,
+			LockedAt:      lockedAt,
+			LockedSeconds: time.Since(lockedAt).Seconds(),
 		})
 	}
 	return keys
