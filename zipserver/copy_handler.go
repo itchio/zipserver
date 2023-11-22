@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -11,6 +12,19 @@ import (
 )
 
 var copyLockTable = NewLockTable()
+
+func formatBytes(b float64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%.2f B", b)
+	}
+	div, exp := float64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", b/div, "kMGTPE"[exp])
+}
 
 // notify the callback URL of task completion
 func notifyCallback(callbackURL string, resValues url.Values) error {
@@ -89,15 +103,17 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		defer reader.Close()
 
 		if err != nil {
-			log.Print("Failed to get file", err)
+			log.Print("Failed to get file: ", err)
 			notifyError(callbackURL, err)
 			return
 		}
 
+		mReader := newMeasuredReader(reader)
+
 		// transfer the reader to s3
 		// TODO: get the actual mime type from the GetFile request
 		log.Print("Starting transfer: ", key)
-		err = targetStorage.PutFile(jobCtx, config.S3Bucket, key, reader, "application/octet-stream")
+		err = targetStorage.PutFile(jobCtx, config.S3Bucket, key, mReader, "application/octet-stream")
 
 		if err != nil {
 			log.Print("Failed to copy file: ", err)
@@ -105,11 +121,16 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 			return
 		}
 
-		log.Print("Transfer complete " + callbackURL)
+		log.Print("Transfer complete: ", key,
+			", bytes read: ", formatBytes(float64(mReader.BytesRead)),
+			", duration: ", mReader.Duration.Seconds(),
+			", speed: ", formatBytes(mReader.TransferSpeed()), "/s")
+
 		resValues := url.Values{}
 		resValues.Add("Success", "true")
 		resValues.Add("Key", key)
-		resValues.Add("Duration", fmt.Sprintf("%f", time.Since(startTime).Seconds()))
+		resValues.Add("Duration", fmt.Sprintf("%.4fs", time.Since(startTime).Seconds()))
+		resValues.Add("Size", fmt.Sprintf("%d", mReader.BytesRead))
 
 		notifyCallback(callbackURL, resValues)
 	})()
