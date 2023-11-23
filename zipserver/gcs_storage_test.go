@@ -42,7 +42,7 @@ func TestGetFile(t *testing.T) {
 	ctx := context.Background()
 
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
-		reader, err := storage.GetFile(ctx, config.Bucket, "text.txt")
+		reader, _, err := storage.GetFile(ctx, config.Bucket, "text.txt")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -94,7 +95,7 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 			}
 
 			path := fmt.Sprintf("%s/%s", prefix, name)
-			reader, err := storage.GetFile(ctx, bucket, path)
+			reader, _, err := storage.GetFile(ctx, bucket, path)
 			if entry.ignored {
 				assert.Error(t, err)
 				assert.True(t, strings.Contains(err.Error(), "object not found"))
@@ -413,8 +414,8 @@ type mockFailingStorage struct {
 	path string
 }
 
-func (m *mockFailingStorage) GetFile(_ context.Context, _, _ string) (io.ReadCloser, error) {
-	return &mockFailingReadCloser{m.t, m.path}, nil
+func (m *mockFailingStorage) GetFile(_ context.Context, _, _ string) (io.ReadCloser, http.Header, error) {
+	return &mockFailingReadCloser{m.t, m.path}, nil, nil
 }
 
 func (m *mockFailingStorage) PutFile(_ context.Context, _, _ string, contents io.Reader, _ string) error {
