@@ -16,6 +16,7 @@ type wrapErrors func(http.ResponseWriter, *http.Request) error
 
 func (fn wrapErrors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := fn(w, r); err != nil {
+		log.Println("Error", r.Method, r.URL.Path, err)
 		http.Error(w, err.Error(), 500)
 	}
 }
