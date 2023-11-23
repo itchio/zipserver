@@ -79,6 +79,14 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
+	targetBucket := config.S3Bucket
+
+	expectedBucket, err := getParam(params, "bucket")
+
+	if expectedBucket != "" && expectedBucket != targetBucket {
+		return fmt.Errorf("Expected bucket does not match target bucket: %s != %s", expectedBucket, targetBucket)
+	}
+
 	hasLock := copyLockTable.tryLockKey(key)
 
 	if !hasLock {
@@ -124,7 +132,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
-		checksumMd5, err := targetStorage.PutFile(jobCtx, config.S3Bucket, key, mReader, contentType)
+		checksumMd5, err := targetStorage.PutFile(jobCtx, targetBucket, key, mReader, contentType)
 
 		if err != nil {
 			log.Print("Failed to copy file: ", err)
