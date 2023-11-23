@@ -67,7 +67,7 @@ func (a *Archiver) fetchZip(ctx context.Context, key string) (string, error) {
 	fname := fetchZipFilename(a.Bucket, key)
 	fname = path.Join(tmpDir, fname)
 
-	src, err := a.Storage.GetFile(ctx, a.Bucket, key)
+	src, _, err := a.Storage.GetFile(ctx, a.Bucket, key)
 	if err != nil {
 		return "", errors.Wrap(err, 0)
 	}

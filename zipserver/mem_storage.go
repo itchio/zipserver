@@ -45,19 +45,18 @@ func (fs *MemStorage) objectPath(bucket, key string) string {
 	return fmt.Sprintf("%s/%s", bucket, key)
 }
 
-// GetFile implements Storage.GetFile for FsStorage
-func (fs *MemStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
+func (fs *MemStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, http.Header, error) {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
 	objectPath := fs.objectPath(bucket, key)
 
 	if obj, ok := fs.objects[objectPath]; ok {
-		return io.NopCloser(bytes.NewReader(obj.data)), nil
+		return io.NopCloser(bytes.NewReader(obj.data)), obj.headers, nil
 	}
 
 	err := fmt.Errorf("%s: object not found", objectPath)
-	return nil, errors.Wrap(err, 0)
+	return nil, nil, errors.Wrap(err, 0)
 }
 
 func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
@@ -74,7 +73,6 @@ func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
 	return nil, errors.Wrap(err, 0)
 }
 
-// PutFile implements Storage.PutFile for FsStorage
 func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, mimeType string) error {
 	return fs.PutFileWithSetup(ctx, bucket, key, contents, func(req *http.Request) error {
 		req.Header.Set("Content-Type", mimeType)
@@ -82,7 +80,6 @@ func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents 
 	})
 }
 
-// PutFileWithSetup implements Storage.PutFileWithSetup for FsStorage
 func (fs *MemStorage) PutFileWithSetup(ctx context.Context, bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
@@ -117,7 +114,6 @@ func (fs *MemStorage) PutFileWithSetup(ctx context.Context, bucket, key string, 
 	return nil
 }
 
-// DeleteFile implements Storage.DeleteFile for FsStorage
 func (fs *MemStorage) DeleteFile(ctx context.Context, bucket, key string) error {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()

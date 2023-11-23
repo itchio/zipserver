@@ -98,7 +98,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 
 		startTime := time.Now()
 
-		reader, err := storage.GetFile(jobCtx, config.Bucket, key)
+		reader, headers, err := storage.GetFile(jobCtx, config.Bucket, key)
 		defer reader.Close()
 
 		if err != nil {
@@ -112,7 +112,11 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		// transfer the reader to s3
 		// TODO: get the actual mime type from the GetFile request
 		log.Print("Starting transfer: ", key)
-		checksumMd5, err := targetStorage.PutFile(jobCtx, config.S3Bucket, key, mReader, "application/octet-stream")
+		contentType := headers.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		checksumMd5, err := targetStorage.PutFile(jobCtx, config.S3Bucket, key, mReader, contentType)
 
 		if err != nil {
 			log.Print("Failed to copy file: ", err)

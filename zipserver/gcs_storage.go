@@ -64,28 +64,28 @@ func (c *GcsStorage) url(bucket, key, logName string) string {
 }
 
 // GetFile returns a reader for the contents of resource at bucket/key
-func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
+func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, http.Header, error) {
 	httpClient, err := c.httpClient()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	url := c.url(bucket, key, "GET")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	res, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if res.StatusCode != 200 {
-		return nil, errors.New(res.Status + " " + url)
+		return nil, res.Header, errors.New(res.Status + " " + url)
 	}
 
-	return res.Body, nil
+	return res.Body, res.Header, nil
 }
 
 // PutFile uploads a file to GCS simply

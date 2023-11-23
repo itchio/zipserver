@@ -39,7 +39,7 @@ func listFromBucket(ctx context.Context, key string, w http.ResponseWriter, r *h
 		return err
 	}
 
-	reader, err := storage.GetFile(ctx, config.Bucket, key)
+	reader, _, err := storage.GetFile(ctx, config.Bucket, key)
 	if err != nil {
 		return err
 	}

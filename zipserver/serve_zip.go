@@ -45,7 +45,7 @@ func (mhh *memoryHttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	ctx, cancel := context.WithTimeout(r.Context(), mhh.fileGetTimeout)
 	defer cancel()
 
-	reader, err := mhh.storage.GetFile(ctx, mhh.bucket, objectPath)
+	reader, headers, err := mhh.storage.GetFile(ctx, mhh.bucket, objectPath)
 	if err != nil {
 		printError(err)
 		w.WriteHeader(404)
@@ -54,17 +54,13 @@ func (mhh *memoryHttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	defer reader.Close()
 
-	headers, err := mhh.storage.getHeaders(mhh.bucket, objectPath)
-	if err != nil {
-		dumpError(w, err)
-		return
-	}
+	if headers != nil {
+		log.Printf("Headers: %v", headers)
 
-	log.Printf("Headers: %v", headers)
-
-	for k, vv := range headers {
-		for _, v := range vv {
-			w.Header().Add(k, v)
+		for k, vv := range headers {
+			for _, v := range vv {
+				w.Header().Add(k, v)
+			}
 		}
 	}
 
