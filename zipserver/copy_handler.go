@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -42,6 +43,13 @@ func notifyCallback(callbackURL string, resValues url.Values) error {
 	if err != nil {
 		log.Print("Failed to deliver callback: " + err.Error())
 		return err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		log.Printf("Callback returned unexpected code: %d %s", response.StatusCode, callbackURL)
+		bodyBytes, _ := ioutil.ReadAll(response.Body)
+		bodyString := string(bodyBytes)
+		log.Printf(bodyString)
 	}
 
 	response.Body.Close()
