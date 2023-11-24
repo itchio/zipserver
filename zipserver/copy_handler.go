@@ -34,7 +34,7 @@ func notifyCallback(callbackURL string, resValues url.Values) error {
 	outBody := bytes.NewBufferString(resValues.Encode())
 	req, err := http.NewRequestWithContext(notifyCtx, http.MethodPost, callbackURL, outBody)
 	if err != nil {
-		log.Printf("Failed to create callback request: %v", err)
+		log.Print("Failed to create callback request: ", err)
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -134,14 +134,22 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 
 		mReader := newMeasuredReader(reader)
 
-		// transfer the reader to s3
-		// TODO: get the actual mime type from the GetFile request
-		log.Print("Starting transfer: ", key)
+		uploadHeaders := http.Header{}
+
 		contentType := headers.Get("Content-Type")
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
-		checksumMd5, err := targetStorage.PutFile(jobCtx, targetBucket, key, mReader, contentType)
+
+		uploadHeaders.Set("Content-Type", contentType)
+
+		contentDisposition := headers.Get("Content-Disposition")
+		if contentDisposition != "" {
+			uploadHeaders.Set("Content-Disposition", contentDisposition)
+		}
+
+		log.Print("Starting transfer: ", key, " ", uploadHeaders)
+		checksumMd5, err := targetStorage.PutFile(jobCtx, targetBucket, key, mReader, uploadHeaders)
 
 		if err != nil {
 			log.Print("Failed to copy file: ", err)

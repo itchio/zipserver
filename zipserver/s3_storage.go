@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strconv"
 
@@ -46,22 +47,29 @@ func NewS3Storage(config *StorageConfig) (*S3Storage, error) {
 }
 
 // upload file and return md5 checksum of transferred bytes
-func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, mimeType string) (string, error) {
+func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, uploadHeaders http.Header) (string, error) {
 	uploader := s3manager.NewUploaderWithClient(s3.New(c.Session))
 
-	// Initialize a new MD5 hash.
 	hash := md5.New()
 
-	// Create a multi-reader that will read from the original reader and also
-	// perform the hash.
+	// duplicate reads into the md5 hasher
 	multi := io.TeeReader(contents, hash)
 
-	_, err := uploader.UploadWithContext(ctx, &s3manager.UploadInput{
-		Bucket:      aws.String(bucket),
-		Key:         aws.String(key),
-		Body:        multi,
-		ContentType: aws.String(mimeType),
-	})
+	uploadInput := &s3manager.UploadInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+		Body:   multi,
+	}
+
+	if contentType := uploadHeaders.Get("Content-Type"); contentType != "" {
+		uploadInput.ContentType = aws.String(contentType)
+	}
+
+	if contentDisposition := uploadHeaders.Get("Content-Disposition"); contentDisposition != "" {
+		uploadInput.ContentDisposition = aws.String(contentDisposition)
+	}
+
+	_, err := uploader.UploadWithContext(ctx, uploadInput)
 
 	if err != nil {
 		return "", err
