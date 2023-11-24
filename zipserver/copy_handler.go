@@ -102,14 +102,14 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		storage, err := NewGcsStorage(config)
 
 		if storage == nil {
-			notifyError(callbackURL, fmt.Errorf("Failed to create source storage: ", err))
+			notifyError(callbackURL, fmt.Errorf("Failed to create source storage: %v", err))
 			return
 		}
 
 		targetStorage, err := NewStorageByName(config, targetName)
 
 		if err != nil {
-			notifyError(callbackURL, fmt.Errorf("Failed to create target storage: ", err))
+			notifyError(callbackURL, fmt.Errorf("Failed to create target storage: %v", err))
 			return
 		}
 
