@@ -50,6 +50,8 @@ func NewS3Storage(config *StorageConfig) (*S3Storage, error) {
 func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, uploadHeaders http.Header) (string, error) {
 	uploader := s3manager.NewUploaderWithClient(s3.New(c.Session))
 
+	contents = metricsReader(contents, &globalMetrics.TotalBytesUploaded)
+
 	hash := md5.New()
 
 	// duplicate reads into the md5 hasher

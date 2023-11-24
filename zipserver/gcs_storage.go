@@ -104,6 +104,8 @@ func (c *GcsStorage) PutFileWithSetup(ctx context.Context, bucket, key string, c
 		return err
 	}
 
+	contents = metricsReader(contents, &globalMetrics.TotalBytesUploaded)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.url(bucket, key, "PUT"), contents)
 	if err != nil {
 		return err

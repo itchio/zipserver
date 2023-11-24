@@ -2,6 +2,7 @@ package zipserver
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"reflect"
@@ -12,11 +13,12 @@ import (
 var globalMetrics = &MetricsCounter{}
 
 type MetricsCounter struct {
-	TotalRequests       atomic.Int64 `metric:"zipserver_requests_total""`
-	TotalErrors         atomic.Int64 `metric:"zipserver_errors_total""`
-	TotalExtractedFiles atomic.Int64 `metric:"zipserver_extracted_files_total"`
-	TotalCopiedFiles    atomic.Int64 `metric:"zipserver_copied_files_total"`
-	// TODO: bytes downloaded, bytes uploaded
+	TotalRequests        atomic.Int64 `metric:"zipserver_requests_total""`
+	TotalErrors          atomic.Int64 `metric:"zipserver_errors_total""`
+	TotalExtractedFiles  atomic.Int64 `metric:"zipserver_extracted_files_total"`
+	TotalCopiedFiles     atomic.Int64 `metric:"zipserver_copied_files_total"`
+	TotalBytesDownloaded atomic.Int64 `metric:"zipserver_downloaded_bytes_total"`
+	TotalBytesUploaded   atomic.Int64 `metric:"zipserver_uploaded_bytes_total"`
 }
 
 // render the metrics in a prometheus compatible format
@@ -42,6 +44,15 @@ func (m *MetricsCounter) RenderMetrics(config *Config) string {
 	}
 
 	return metrics.String()
+}
+
+// wrap a reader to count bytes read into the counter
+func metricsReader(reader io.Reader, counter *atomic.Int64) readerClosure {
+	return func(p []byte) (int, error) {
+		bytesRead, err := reader.Read(p)
+		counter.Add(int64(bytesRead))
+		return bytesRead, err
+	}
 }
 
 // render the global metrics
