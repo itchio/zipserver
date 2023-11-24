@@ -74,6 +74,41 @@ type StorageConfig struct {
 	Bucket string `json:",omitempty"`
 }
 
+func (s *StorageConfig) Validate() error {
+	if s.Name == "" {
+		return errors.New("Config error: Name field missing")
+	}
+
+	missingFieldError := func(field string) error {
+		return errors.New(fmt.Sprintf("Config error: [Storage %s] %s field missing", s.Name, field))
+	}
+
+	if s.Type == GCS {
+		if s.GCSPrivateKeyPath == "" {
+			return missingFieldError("GCSPrivateKeyPath")
+		}
+
+		if s.GCSClientEmail == "" {
+			return missingFieldError("GCSClientEmail")
+		}
+	} else if s.Type == S3 {
+		// access key and secret key are optional for S3, since they can be loaded from env
+		if s.S3Endpoint == "" {
+			return missingFieldError("S3Endpoint")
+		}
+
+		if s.S3Region == "" {
+			return missingFieldError("S3Region")
+		}
+	}
+
+	if s.Bucket == "" {
+		return missingFieldError("Bucket")
+	}
+
+	return nil
+}
+
 // Config contains both storage configuration and the enforced extraction limits
 type Config struct {
 	PrivateKeyPath string
@@ -169,6 +204,13 @@ func LoadConfig(fname string) (*Config, error) {
 
 	if config.ExtractPrefix == "" {
 		return nil, errors.New("Config error: ExtractPrefix field missing")
+	}
+
+	// validate storage targets
+	for _, target := range config.StorageTargets {
+		if err := target.Validate(); err != nil {
+			return nil, err
+		}
 	}
 
 	return &config, nil
