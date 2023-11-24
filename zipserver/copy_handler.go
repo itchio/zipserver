@@ -41,7 +41,7 @@ func notifyCallback(callbackURL string, resValues url.Values) error {
 
 	response, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Print("Failed to deliver callback: " + err.Error())
+		log.Print("Failed to deliver callback: ", err)
 		return err
 	}
 
