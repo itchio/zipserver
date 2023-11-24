@@ -106,7 +106,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 			return
 		}
 
-		targetStorage, err := GetStorage(config, targetName)
+		targetStorage, err := NewStorageByName(config, targetName)
 
 		if err != nil {
 			notifyError(callbackURL, fmt.Errorf("Failed to create target storage: ", err))

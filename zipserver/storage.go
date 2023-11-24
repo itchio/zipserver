@@ -20,7 +20,7 @@ type Storage interface {
 
 // GetStorage returns a Storage object based on the given storage name and config.
 // TODO: eventually this should be a factory that can return different storage types
-func GetStorage(config *Config, name string) (*S3Storage, error) {
+func NewStorageByName(config *Config, name string) (*S3Storage, error) {
 	targetConfig := config.GetStorageTargetByName(name)
 	if targetConfig == nil {
 		return nil, fmt.Errorf("no config found for name: %s", name)
