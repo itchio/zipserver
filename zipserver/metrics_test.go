@@ -19,13 +19,14 @@ func Test_Metrics(t *testing.T) {
 	metrics.TotalExtractedFiles.Add(1)
 	assert.Equal(t, int64(1), metrics.TotalExtractedFiles.Load())
 
-	// Test RenderMetrics
-	t.Setenv("ZIPSERVER_METRICS_HOST", "localhost")
+	config := &Config{
+		MetricsHost: "localhost",
+	}
+
 	expectedMetrics := `zipserver_requests_total{host="localhost"} 1
 zipserver_errors_total{host="localhost"} 0
 zipserver_extracted_files_total{host="localhost"} 1
 zipserver_copied_files_total{host="localhost"} 0
 `
-
-	assert.Equal(t, expectedMetrics, metrics.RenderMetrics())
+	assert.Equal(t, expectedMetrics, metrics.RenderMetrics(config))
 }

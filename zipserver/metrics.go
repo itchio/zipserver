@@ -20,13 +20,13 @@ type MetricsCounter struct {
 }
 
 // render the metrics in a prometheus compatible format
-func (m *MetricsCounter) RenderMetrics() string {
+func (m *MetricsCounter) RenderMetrics(config *Config) string {
 	var metrics strings.Builder
 
 	valueOfMetrics := reflect.ValueOf(m).Elem()
 
-	hostname, ok := os.LookupEnv("ZIPSERVER_METRICS_HOST")
-	if !ok {
+	hostname := config.MetricsHost
+	if hostname == "" {
 		hostname, _ = os.Hostname()
 	}
 
@@ -47,6 +47,6 @@ func (m *MetricsCounter) RenderMetrics() string {
 // render the global metrics
 func metricsHandler(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(globalMetrics.RenderMetrics()))
+	w.Write([]byte(globalMetrics.RenderMetrics(config)))
 	return nil
 }

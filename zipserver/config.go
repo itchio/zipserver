@@ -115,6 +115,7 @@ type Config struct {
 	ClientEmail    string
 	Bucket         string
 	ExtractPrefix  string
+	MetricsHost    string `json:",omitempty"`
 
 	MaxFileSize       uint64
 	MaxTotalSize      uint64
