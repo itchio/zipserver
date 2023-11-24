@@ -2,6 +2,7 @@ package zipserver
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func Test_Config(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	writeConfigBytes := func(bytes []byte) {
-		_, err := tmpFile.Seek(0, os.SEEK_SET)
+		_, err := tmpFile.Seek(0, io.SeekStart)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -47,9 +47,9 @@ func notifyCallback(callbackURL string, resValues url.Values) error {
 
 	if response.StatusCode != http.StatusOK {
 		log.Printf("Callback returned unexpected code: %d %s", response.StatusCode, callbackURL)
-		bodyBytes, _ := ioutil.ReadAll(response.Body)
+		bodyBytes, _ := io.ReadAll(response.Body)
 		bodyString := string(bodyBytes)
-		log.Printf(bodyString)
+		log.Print(bodyString)
 	}
 
 	response.Body.Close()
@@ -84,7 +84,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	expectedBucket, err := getParam(params, "bucket")
+	expectedBucket, _ := getParam(params, "bucket")
 
 	hasLock := copyLockTable.tryLockKey(key)
 
@@ -123,13 +123,14 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		startTime := time.Now()
 
 		reader, headers, err := storage.GetFile(jobCtx, config.Bucket, key)
-		defer reader.Close()
 
 		if err != nil {
 			log.Print("Failed to get file: ", err)
 			notifyError(callbackURL, err)
 			return
 		}
+
+		defer reader.Close()
 
 		mReader := newMeasuredReader(reader)
 

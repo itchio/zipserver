@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 
-	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/jwt"
 )
@@ -53,7 +52,7 @@ func NewGcsStorage(config *Config) (*GcsStorage, error) {
 }
 
 func (c *GcsStorage) httpClient() (*http.Client, error) {
-	return c.jwtConfig.Client(oauth2.NoContext), nil
+	return c.jwtConfig.Client(context.Background()), nil
 }
 
 func (c *GcsStorage) url(bucket, key, logName string) string {
@@ -82,6 +81,7 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 	}
 
 	if res.StatusCode != 200 {
+		res.Body.Close()
 		return nil, res.Header, errors.New(res.Status + " " + url)
 	}
 

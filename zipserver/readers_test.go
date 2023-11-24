@@ -3,7 +3,6 @@ package zipserver
 import (
 	"bytes"
 	"io"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,8 +39,8 @@ func Test_limitedReader(t *testing.T) {
 	assert.EqualValues(t, s, string(result))
 	assert.EqualValues(t, len(s), totalBytes)
 
-	sr.Seek(0, os.SEEK_SET)
+	sr.Seek(0, io.SeekStart)
 	lr = limitedReader(sr, 5, &totalBytes)
-	result, err = io.ReadAll(lr)
+	_, err = io.ReadAll(lr)
 	assert.Error(t, err)
 }
