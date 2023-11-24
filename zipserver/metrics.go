@@ -47,6 +47,6 @@ func (m *MetricsCounter) RenderMetrics(config *Config) string {
 // render the global metrics
 func metricsHandler(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(globalMetrics.RenderMetrics(config)))
+	w.Write([]byte(globalMetrics.RenderMetrics(globalConfig)))
 	return nil
 }

@@ -13,7 +13,7 @@ import (
 )
 
 func slurpHandler(w http.ResponseWriter, r *http.Request) error {
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.JobTimeout))
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
 	defer cancel()
 
 	params := r.URL.Query()
@@ -42,7 +42,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	process := func(ctx context.Context) error {
-		getCtx, cancel := context.WithTimeout(ctx, time.Duration(config.FileGetTimeout))
+		getCtx, cancel := context.WithTimeout(ctx, time.Duration(globalConfig.FileGetTimeout))
 		defer cancel()
 
 		log.Print("Fetching URL: ", slurpURL)
@@ -87,16 +87,16 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		log.Print("ACL: ", acl)
 		log.Print("Content-Disposition: ", contentDisposition)
 
-		storage, err := NewGcsStorage(config)
+		storage, err := NewGcsStorage(globalConfig)
 
 		if storage == nil {
 			log.Fatal("Failed to create storage:", err)
 		}
 
-		putCtx, cancel := context.WithTimeout(ctx, time.Duration(config.FilePutTimeout))
+		putCtx, cancel := context.WithTimeout(ctx, time.Duration(globalConfig.FilePutTimeout))
 		defer cancel()
 
-		return storage.PutFileWithSetup(putCtx, config.Bucket, key, body, func(req *http.Request) error {
+		return storage.PutFileWithSetup(putCtx, globalConfig.Bucket, key, body, func(req *http.Request) error {
 			req.Header.Add("Content-Type", contentType)
 
 			if contentDisposition != "" {
@@ -135,7 +135,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 			resValues.Add("Success", "true")
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, time.Duration(config.AsyncNotificationTimeout))
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(globalConfig.AsyncNotificationTimeout))
 		defer cancel()
 
 		outBody := bytes.NewBufferString(resValues.Encode())

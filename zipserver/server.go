@@ -10,7 +10,7 @@ import (
 	"fmt"
 )
 
-var config *Config
+var globalConfig *Config
 
 type wrapErrors func(http.ResponseWriter, *http.Request) error
 
@@ -95,7 +95,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) error {
 
 // StartZipServer starts listening for extract and slurp requests
 func StartZipServer(listenTo string, _config *Config) error {
-	config = _config
+	globalConfig = _config
 
 	// Extract a .zip file (downloaded from GCS), stores each
 	// individual file on GCS in a given bucket/prefix

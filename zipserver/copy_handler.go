@@ -28,7 +28,7 @@ func formatBytes(b float64) string {
 
 // notify the callback URL of task completion
 func notifyCallback(callbackURL string, resValues url.Values) error {
-	notifyCtx, notifyCancel := context.WithTimeout(context.Background(), time.Duration(config.AsyncNotificationTimeout))
+	notifyCtx, notifyCancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.AsyncNotificationTimeout))
 	defer notifyCancel()
 
 	outBody := bytes.NewBufferString(resValues.Encode())
@@ -84,7 +84,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	storageTargetConfig := config.GetStorageTargetByName(targetName)
+	storageTargetConfig := globalConfig.GetStorageTargetByName(targetName)
 	if storageTargetConfig == nil {
 		return fmt.Errorf("Invalid target: %s", targetName)
 	}
@@ -108,10 +108,10 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	go (func() {
 		defer copyLockTable.releaseKey(lockKey)
 
-		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
-		storage, err := NewGcsStorage(config)
+		storage, err := NewGcsStorage(globalConfig)
 
 		if storage == nil {
 			notifyError(callbackURL, fmt.Errorf("Failed to create source storage: %v", err))
@@ -127,7 +127,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 
 		startTime := time.Now()
 
-		reader, headers, err := storage.GetFile(jobCtx, config.Bucket, key)
+		reader, headers, err := storage.GetFile(jobCtx, globalConfig.Bucket, key)
 
 		if err != nil {
 			log.Print("Failed to get file: ", err)

@@ -66,10 +66,10 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		return writeJSONMessage(w, struct{ Processing bool }{true})
 	}
 
-	limits := loadLimits(params, config)
+	limits := loadLimits(params, globalConfig)
 
 	process := func(ctx context.Context) ([]ExtractedFile, error) {
-		archiver := NewArchiver(config)
+		archiver := NewArchiver(globalConfig)
 		files, err := archiver.ExtractZip(ctx, key, prefix, limits)
 
 		return files, err
@@ -80,7 +80,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	if asyncURL == "" {
 		defer extractLockTable.releaseKey(key)
 
-		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.JobTimeout))
+		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
 		extracted, err := process(ctx)
@@ -99,7 +99,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		defer extractLockTable.releaseKey(key)
 
 		// This job is expected to outlive the incoming request, so create a detached context.
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
 		extracted, err := process(ctx)
@@ -127,7 +127,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 
 		log.Print("Notifying " + asyncURL)
 
-		nofityCtx, nofifyCancel := context.WithTimeout(context.Background(), time.Duration(config.AsyncNotificationTimeout))
+		nofityCtx, nofifyCancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.AsyncNotificationTimeout))
 		defer nofifyCancel()
 
 		outBody := bytes.NewBufferString(resValues.Encode())

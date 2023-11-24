@@ -34,12 +34,12 @@ func listZip(body []byte, w http.ResponseWriter, r *http.Request) error {
 }
 
 func listFromBucket(ctx context.Context, key string, w http.ResponseWriter, r *http.Request) error {
-	storage, err := NewGcsStorage(config)
+	storage, err := NewGcsStorage(globalConfig)
 	if storage == nil {
 		return err
 	}
 
-	reader, _, err := storage.GetFile(ctx, config.Bucket, key)
+	reader, _, err := storage.GetFile(ctx, globalConfig.Bucket, key)
 	if err != nil {
 		return err
 	}
@@ -75,7 +75,7 @@ func listFromUrl(ctx context.Context, url string, w http.ResponseWriter, r *http
 }
 
 func listHandler(w http.ResponseWriter, r *http.Request) error {
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(config.FileGetTimeout))
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.FileGetTimeout))
 	defer cancel()
 
 	params := r.URL.Query()
