@@ -3,6 +3,7 @@ package zipserver
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -24,6 +25,11 @@ func (m *MetricsCounter) RenderMetrics() string {
 
 	valueOfMetrics := reflect.ValueOf(m).Elem()
 
+	hostname, ok := os.LookupEnv("ZIPSERVER_METRICS_HOST")
+	if !ok {
+		hostname, _ = os.Hostname()
+	}
+
 	for i := 0; i < valueOfMetrics.NumField(); i++ {
 		metricTag := valueOfMetrics.Type().Field(i).Tag.Get("metric")
 		if metricTag == "" {
@@ -31,7 +37,8 @@ func (m *MetricsCounter) RenderMetrics() string {
 		}
 		fieldValue := valueOfMetrics.Field(i).Addr().Interface().(*atomic.Int64).Load()
 
-		metrics.WriteString(fmt.Sprintf("%s %v\n", metricTag, fieldValue))
+		metrics.WriteString(fmt.Sprintf("%s{host=\"%s\"} %v\n", metricTag, hostname, fieldValue))
+
 	}
 
 	return metrics.String()

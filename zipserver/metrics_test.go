@@ -20,10 +20,11 @@ func Test_Metrics(t *testing.T) {
 	assert.Equal(t, int64(1), metrics.TotalExtractedFiles.Load())
 
 	// Test RenderMetrics
-	expectedMetrics := `zipserver_requests_total 1
-zipserver_errors_total 0
-zipserver_extracted_files_total 1
-zipserver_copied_files_total 0
+	t.Setenv("ZIPSERVER_METRICS_HOST", "localhost")
+	expectedMetrics := `zipserver_requests_total{host="localhost"} 1
+zipserver_errors_total{host="localhost"} 0
+zipserver_extracted_files_total{host="localhost"} 1
+zipserver_copied_files_total{host="localhost"} 0
 `
 
 	assert.Equal(t, expectedMetrics, metrics.RenderMetrics())
