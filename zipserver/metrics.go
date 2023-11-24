@@ -55,7 +55,24 @@ func metricsReader(reader io.Reader, counter *atomic.Int64) readerClosure {
 	}
 }
 
-// render the global metrics
+type metricsReadCloser struct {
+	io.ReadCloser
+	counter *atomic.Int64
+}
+
+// Read reads data from the underlying io.ReadCloser, tracking the bytes read
+func (mrc metricsReadCloser) Read(p []byte) (int, error) {
+	bytesRead, err := mrc.ReadCloser.Read(p)
+	mrc.counter.Add(int64(bytesRead))
+	return bytesRead, err
+}
+
+// Close closes the underlying io.ReadCloser and returns the result
+func (mrc metricsReadCloser) Close() error {
+	return mrc.ReadCloser.Close()
+}
+
+// http endpoint to render the global metrics
 func metricsHandler(w http.ResponseWriter, r *http.Request) error {
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write([]byte(globalMetrics.RenderMetrics(globalConfig)))

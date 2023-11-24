@@ -85,7 +85,9 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 		return nil, res.Header, errors.New(res.Status + " " + url)
 	}
 
-	return res.Body, res.Header, nil
+	trackedBody := metricsReadCloser{res.Body, &globalMetrics.TotalBytesDownloaded}
+
+	return trackedBody, res.Header, nil
 }
 
 // PutFile uploads a file to GCS simply
