@@ -354,6 +354,8 @@ func (a *Archiver) extractAndUploadOne(ctx context.Context, key string, file *zi
 		return resource, errors.Wrap(err, 0)
 	}
 
+	globalMetrics.TotalExtractedFiles.Add(1)
+
 	return resource, nil
 }
 

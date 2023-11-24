@@ -15,7 +15,10 @@ var config *Config
 type wrapErrors func(http.ResponseWriter, *http.Request) error
 
 func (fn wrapErrors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	globalMetrics.TotalRequests.Add(1)
+
 	if err := fn(w, r); err != nil {
+		globalMetrics.TotalErrors.Add(1)
 		log.Println("Error", r.Method, r.URL.Path, err)
 		http.Error(w, err.Error(), 500)
 	}
@@ -99,13 +102,15 @@ func StartZipServer(listenTo string, _config *Config) error {
 	http.Handle("/extract", wrapErrors(extractHandler))
 
 	http.Handle("/copy", wrapErrors(copyHandler))
-	http.Handle("/status", wrapErrors(statusHandler))
 
 	// show the files in the zip
 	http.Handle("/list", wrapErrors(listHandler))
 
 	// Download a file from an http{,s} URL and store it on GCS
 	http.Handle("/slurp", wrapErrors(slurpHandler))
+
+	http.Handle("/status", wrapErrors(statusHandler))
+	http.Handle("/metrics", wrapErrors(metricsHandler))
 
 	log.Print("Listening on: " + listenTo)
 	return http.ListenAndServe(listenTo, nil)

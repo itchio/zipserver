@@ -148,6 +148,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 			return
 		}
 
+		globalMetrics.TotalCopiedFiles.Add(1)
 		log.Print("Transfer complete: ", key,
 			", bytes read: ", formatBytes(float64(mReader.BytesRead)),
 			", duration: ", mReader.Duration.Seconds(),
