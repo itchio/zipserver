@@ -74,6 +74,18 @@ type StorageConfig struct {
 	Bucket string `json:",omitempty"`
 }
 
+// TODO: eventually this should be a factory that can return different storage types
+func (sc *StorageConfig) NewStorageClient() (*S3Storage, error) {
+	switch sc.Type {
+	case S3:
+		return NewS3Storage(sc)
+	case GCS:
+		return nil, fmt.Errorf("GCS storage type is not supported yet")
+	default:
+		return nil, fmt.Errorf("unsupported storage type")
+	}
+}
+
 func (s *StorageConfig) Validate() error {
 	if s.Name == "" {
 		return errors.New("Config error: Name field missing")

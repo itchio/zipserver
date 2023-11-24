@@ -65,8 +65,8 @@ func notifyError(callbackURL string, err error) error {
 	return notifyCallback(callbackURL, message)
 }
 
-// The copy handler will asynchronously copy a file from google cloud storage
-// to the target S3 compatible storage provider
+// The copy handler will asynchronously copy a file from primary storage to the
+// storage specified by target
 func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	params := r.URL.Query()
 	key, err := getParam(params, "key")
@@ -84,9 +84,21 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	expectedBucket, _ := getParam(params, "bucket")
+	storageTargetConfig := config.GetStorageTargetByName(targetName)
+	if storageTargetConfig == nil {
+		return fmt.Errorf("Invalid target: %s", targetName)
+	}
 
-	hasLock := copyLockTable.tryLockKey(key)
+	expectedBucket, _ := getParam(params, "bucket")
+	targetBucket := storageTargetConfig.Bucket
+
+	if expectedBucket != "" && expectedBucket != targetBucket {
+		return fmt.Errorf("Expected bucket does not match target bucket: %s != %s", expectedBucket, targetBucket)
+	}
+
+	lockKey := fmt.Sprintf("%s:%s", targetName, key)
+
+	hasLock := copyLockTable.tryLockKey(lockKey)
 
 	if !hasLock {
 		// already being extracted in another handler, ask consumer to wait
@@ -94,7 +106,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	go (func() {
-		defer copyLockTable.releaseKey(key)
+		defer copyLockTable.releaseKey(lockKey)
 
 		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
 		defer cancel()
@@ -106,17 +118,10 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 			return
 		}
 
-		targetStorage, err := NewStorageByName(config, targetName)
+		targetStorage, err := storageTargetConfig.NewStorageClient()
 
 		if err != nil {
 			notifyError(callbackURL, fmt.Errorf("Failed to create target storage: %v", err))
-			return
-		}
-
-		targetBucket := targetStorage.config.Bucket
-
-		if expectedBucket != "" && expectedBucket != targetBucket {
-			notifyError(callbackURL, fmt.Errorf("Expected bucket does not match target bucket: %s != %s", expectedBucket, targetBucket))
 			return
 		}
 
