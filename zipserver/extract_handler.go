@@ -85,6 +85,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 
 		extracted, err := process(ctx)
 		if err != nil {
+			globalMetrics.TotalErrors.Add(1)
 			return writeJSONError(w, "ExtractError", err)
 		}
 
@@ -112,6 +113,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 				errMessage = "Zip extraction timed out"
 			}
 
+			globalMetrics.TotalErrors.Add(1)
 			resValues.Add("Type", "ExtractError")
 			resValues.Add("Error", errMessage)
 			log.Print("Extraction failed ", err)
