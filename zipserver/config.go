@@ -22,6 +22,58 @@ type ExtractLimits struct {
 	ExtractionThreads int
 }
 
+type StorageType int
+
+const (
+	GCS StorageType = iota // Google Cloud Storage
+	S3                     // Amazon S3 Storage
+)
+
+var storageTypeString = map[string]StorageType{
+	"GCS": GCS,
+	"S3":  S3,
+}
+
+var storageTypeInt = map[StorageType]string{
+	GCS: "GCS",
+	S3:  "S3",
+}
+
+func (s *StorageType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(storageTypeInt[*s])
+}
+
+func (s *StorageType) UnmarshalJSON(data []byte) error {
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+	val, ok := storageTypeString[str]
+	if !ok {
+		return errors.New("Invalid StorageType value")
+	}
+	*s = val
+	return nil
+}
+
+// StorageTarget represents a storage configuration that can be written to, either GCS or S3
+type StorageConfig struct {
+	Name string
+
+	Type StorageType
+
+	// NOTE: GCS not implemented for storage config yet
+	GCSPrivateKeyPath string `json:",omitempty"`
+	GCSClientEmail    string `json:",omitempty"`
+
+	S3AccessKeyID string `json:",omitempty"`
+	S3SecretKey   string `json:",omitempty"`
+	S3Endpoint    string `json:",omitempty"`
+	S3Region      string `json:",omitempty"`
+
+	Bucket string `json:",omitempty"`
+}
+
 // Config contains both storage configuration and the enforced extraction limits
 type Config struct {
 	PrivateKeyPath string
@@ -35,16 +87,24 @@ type Config struct {
 	MaxFileNameLength int
 	ExtractionThreads int
 
-	S3AccessKeyID string `json:",omitempty"`
-	S3SecretKey   string `json:",omitempty"`
-	S3Endpoint    string `json:",omitempty"`
-	S3Bucket      string `json:",omitempty"`
-	S3Region      string `json:",omitempty"`
-
 	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
 	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object
 	FilePutTimeout           Duration `json:",omitempty"` // Time to upload a single object
 	AsyncNotificationTimeout Duration `json:",omitempty"` // Time to complete webhook request
+
+	// Places that can be written to
+	StorageTargets []StorageConfig `json:",omitempty"`
+}
+
+// GetStorageTargetByName returns the storage target with the given name from the config.
+// If no such target exists, it returns nil.
+func (c *Config) GetStorageTargetByName(name string) *StorageConfig {
+	for i, target := range c.StorageTargets {
+		if target.Name == name {
+			return &c.StorageTargets[i]
+		}
+	}
+	return nil
 }
 
 var defaultConfig = Config{

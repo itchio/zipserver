@@ -17,9 +17,10 @@ import (
 
 type S3Storage struct {
 	Session *session.Session
+	config  *StorageConfig
 }
 
-func NewS3Storage(config *Config) (*S3Storage, error) {
+func NewS3Storage(config *StorageConfig) (*S3Storage, error) {
 	var creds *credentials.Credentials
 
 	if config.S3AccessKeyID == "" || config.S3SecretKey == "" {
@@ -39,6 +40,7 @@ func NewS3Storage(config *Config) (*S3Storage, error) {
 	}
 
 	return &S3Storage{
+		config:  config,
 		Session: sess,
 	}, nil
 }

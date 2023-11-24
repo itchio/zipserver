@@ -79,13 +79,12 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	targetBucket := config.S3Bucket
+	targetName, err := getParam(params, "target")
+	if err != nil {
+		return err
+	}
 
 	expectedBucket, err := getParam(params, "bucket")
-
-	if expectedBucket != "" && expectedBucket != targetBucket {
-		return fmt.Errorf("Expected bucket does not match target bucket: %s != %s", expectedBucket, targetBucket)
-	}
 
 	hasLock := copyLockTable.tryLockKey(key)
 
@@ -103,13 +102,22 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		storage, err := NewGcsStorage(config)
 
 		if storage == nil {
-			log.Fatal("Failed to create source (GCS) storage: ", err)
+			notifyError(callbackURL, fmt.Errorf("Failed to create source storage: ", err))
+			return
 		}
 
-		targetStorage, err := NewS3Storage(config)
+		targetStorage, err := GetStorage(config, targetName)
 
-		if storage == nil {
-			log.Fatal("Failed to create target (S3) storage: ", err)
+		if err != nil {
+			notifyError(callbackURL, fmt.Errorf("Failed to create target storage: ", err))
+			return
+		}
+
+		targetBucket := targetStorage.config.Bucket
+
+		if expectedBucket != "" && expectedBucket != targetBucket {
+			notifyError(callbackURL, fmt.Errorf("Expected bucket does not match target bucket: %s != %s", expectedBucket, targetBucket))
+			return
 		}
 
 		startTime := time.Now()
