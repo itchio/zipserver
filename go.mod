@@ -1,6 +1,6 @@
 module github.com/itchio/zipserver
 
-go 1.17
+go 1.19
 
 require (
 	github.com/aws/aws-sdk-go v1.48.2
