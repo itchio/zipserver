@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/itchio/zipserver.svg?branch=master)](https://travis-ci.org/itchio/zipserver)
+[![test](https://github.com/itchio/zipserver/actions/workflows/test.yml/badge.svg)](https://github.com/itchio/zipserver/actions/workflows/test.yml)
 
 # zipserver
 
