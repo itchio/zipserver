@@ -155,7 +155,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 			uploadHeaders.Set("Content-Disposition", contentDisposition)
 		}
 
-		log.Print("Starting transfer: ", key, " ", uploadHeaders)
+		log.Print("Starting transfer: [", targetName, "] ", targetBucket, "/", key, " ", uploadHeaders)
 		checksumMd5, err := targetStorage.PutFile(jobCtx, targetBucket, key, mReader, uploadHeaders)
 
 		if err != nil {
@@ -165,7 +165,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		globalMetrics.TotalCopiedFiles.Add(1)
-		log.Print("Transfer complete: ", key,
+		log.Print("Transfer complete: [", targetName, "] ", targetBucket, "/", key,
 			", bytes read: ", formatBytes(float64(mReader.BytesRead)),
 			", duration: ", mReader.Duration.Seconds(),
 			", speed: ", formatBytes(mReader.TransferSpeed()), "/s")
