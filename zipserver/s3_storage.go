@@ -48,7 +48,9 @@ func NewS3Storage(config *StorageConfig) (*S3Storage, error) {
 
 // upload file and return md5 checksum of transferred bytes
 func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, uploadHeaders http.Header) (string, error) {
-	uploader := s3manager.NewUploaderWithClient(s3.New(c.Session))
+	uploader := s3manager.NewUploaderWithClient(s3.New(c.Session), func(u *s3manager.Uploader) {
+		u.PartSize = 1024 * 1024 * 50 // 50Mb per part to avoid excess API calls
+	})
 
 	contents = metricsReader(contents, &globalMetrics.TotalBytesUploaded)
 
