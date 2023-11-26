@@ -31,8 +31,6 @@ func notifyCallback(callbackURL string, resValues url.Values) error {
 	notifyCtx, notifyCancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.AsyncNotificationTimeout))
 	defer notifyCancel()
 
-	globalMetrics.TotalErrors.Add(1)
-
 	outBody := bytes.NewBufferString(resValues.Encode())
 	req, err := http.NewRequestWithContext(notifyCtx, http.MethodPost, callbackURL, outBody)
 	if err != nil {
@@ -61,6 +59,8 @@ func notifyCallback(callbackURL string, resValues url.Values) error {
 
 // notify the callback URL that an error happened
 func notifyError(callbackURL string, err error) error {
+	globalMetrics.TotalErrors.Add(1)
+
 	message := url.Values{}
 	message.Add("Success", "false")
 	message.Add("Error", err.Error())
