@@ -13,7 +13,7 @@ size, total file size, or number of files.
 Install
 
 ```bash
-go get github.com/itchio/zipserver
+go install github.com/itchio/zipserver@latest
 
 zipserver -help
 ```
