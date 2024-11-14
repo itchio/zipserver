@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+var slurpLockTable = NewLockTable()
+
 func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
 	defer cancel()
@@ -22,6 +24,11 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+
+	if !slurpLockTable.tryLockKey(key) {
+		return fmt.Errorf("Key is currently being processed: %s", key)
+	}
+	defer slurpLockTable.releaseKey(key)
 
 	slurpURL, err := getParam(params, "url")
 	if err != nil {
