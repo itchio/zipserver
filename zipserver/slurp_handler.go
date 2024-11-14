@@ -25,11 +25,6 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	if !slurpLockTable.tryLockKey(key) {
-		return fmt.Errorf("Key is currently being processed: %s", key)
-	}
-	defer slurpLockTable.releaseKey(key)
-
 	slurpURL, err := getParam(params, "url")
 	if err != nil {
 		return err
@@ -49,6 +44,11 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	process := func(ctx context.Context) error {
+		if !slurpLockTable.tryLockKey(key) {
+			return fmt.Errorf("Key is currently being processed: %s", key)
+		}
+		defer slurpLockTable.releaseKey(key)
+
 		getCtx, cancel := context.WithTimeout(ctx, time.Duration(globalConfig.FileGetTimeout))
 		defer cancel()
 
