@@ -102,6 +102,7 @@ func StartZipServer(listenTo string, _config *Config) error {
 	http.Handle("/extract", wrapErrors(extractHandler))
 
 	http.Handle("/copy", wrapErrors(copyHandler))
+	http.Handle("/delete", wrapErrors(deleteHandler))
 
 	// show the files in the zip
 	http.Handle("/list", wrapErrors(listHandler))

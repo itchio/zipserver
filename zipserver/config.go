@@ -72,6 +72,9 @@ type StorageConfig struct {
 	S3Region      string `json:",omitempty"`
 
 	Bucket string `json:",omitempty"`
+
+	// TODO: use this field to prevent write operations to this storage config
+	Readonly bool `json:",omitempty"`
 }
 
 // TODO: eventually this should be a factory that can return different storage types
