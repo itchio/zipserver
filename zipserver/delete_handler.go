@@ -20,7 +20,25 @@ type DeleteResult struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// deleteHandler handles the deletion of files specified by an array of keys
+// deleteHandler handles bulk deletion of files from a specified storage target.
+// It processes an HTTP request with an array of keys to delete, validates the storage target,
+// and performs concurrent file deletions with optional asynchronous callback notification.
+//
+// The function supports two modes of operation:
+// 1. Synchronous: Returns immediate results of deletion attempts
+// 2. Asynchronous: Sends results to a specified callback URL while returning an immediate response
+//
+// Parameters:
+//   - w: HTTP response writer for sending the response
+//   - r: HTTP request containing deletion parameters
+//
+// Request form parameters:
+//   - keys[]: Array of file keys to delete (required)
+//   - target: Name of the storage target (required)
+//   - callback: Optional URL to receive asynchronous deletion results
+//
+// Returns an error if request parsing, parameter validation, or processing fails.
+// Handles concurrent deletions with per-key locking to prevent race conditions.
 func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 	err := r.ParseForm()
 	if err != nil {

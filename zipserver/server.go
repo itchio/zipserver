@@ -93,7 +93,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-// StartZipServer starts listening for extract and slurp requests
+// Returns an error if the server fails to start or listen on the specified address.
 func StartZipServer(listenTo string, _config *Config) error {
 	globalConfig = _config
 
