@@ -2,7 +2,7 @@ package zipserver
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,7 +26,7 @@ func Test_Metrics(t *testing.T) {
 	reader := metricsReader(buf, &metrics.TotalBytesDownloaded)
 
 	// Read from the reader to trigger the metrics update
-	_, _ = ioutil.ReadAll(reader)
+	_, _ = io.ReadAll(reader)
 
 	config := &Config{
 		MetricsHost: "localhost",
