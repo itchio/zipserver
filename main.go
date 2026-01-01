@@ -15,12 +15,20 @@ import (
 
 var _ fmt.Formatter
 
+// Build-time variables set via ldflags
 var (
-	configFname string
-	listenTo    string
-	dumpConfig  bool
-	serve       string
-	extract     string
+	Version   = "dev"
+	CommitSHA = "unknown"
+	BuildTime = "unknown"
+)
+
+var (
+	configFname    string
+	listenTo       string
+	dumpConfig     bool
+	serve          string
+	extract        string
+	showVersion    bool
 )
 
 func init() {
@@ -29,6 +37,7 @@ func init() {
 	flag.BoolVar(&dumpConfig, "dump", false, "Dump the parsed config and exit")
 	flag.StringVar(&serve, "serve", "", "Serve a given zip from a local HTTP server")
 	flag.StringVar(&extract, "extract", "", "Extract zip file to random name on GCS (requires a config with bucket)")
+	flag.BoolVar(&showVersion, "version", false, "Print version information and exit")
 }
 
 func must(err error) {
@@ -45,6 +54,13 @@ func must(err error) {
 
 func main() {
 	flag.Parse()
+
+	if showVersion {
+		fmt.Printf("zipserver %s\n", Version)
+		fmt.Printf("  commit: %s\n", CommitSHA)
+		fmt.Printf("  built:  %s\n", BuildTime)
+		return
+	}
 
 	config, err := zipserver.LoadConfig(configFname)
 	must(err)
