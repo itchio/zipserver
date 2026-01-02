@@ -14,6 +14,35 @@ import (
 // mutex for keys currently being extracted
 var extractLockTable = NewLockTable()
 
+// Extract performs a zip extraction operation
+func (o *Operations) Extract(ctx context.Context, params ExtractParams) ExtractResult {
+	limits := params.Limits
+	if limits == nil {
+		limits = DefaultExtractLimits(o.config)
+	}
+
+	archiver := NewArchiver(o.config)
+
+	var files []ExtractedFile
+	var err error
+
+	if params.File != "" {
+		// Extract from local file
+		files, err = archiver.UploadZipFromFile(ctx, params.File, params.Prefix, limits)
+	} else if params.Key != "" {
+		// Extract from storage
+		files, err = archiver.ExtractZip(ctx, params.Key, params.Prefix, limits)
+	} else {
+		return ExtractResult{Err: fmt.Errorf("either Key or File must be specified")}
+	}
+
+	if err != nil {
+		return ExtractResult{Err: err}
+	}
+
+	return ExtractResult{ExtractedFiles: files}
+}
+
 func loadLimits(params url.Values, config *Config) *ExtractLimits {
 	limits := DefaultExtractLimits(config)
 
@@ -67,12 +96,12 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	limits := loadLimits(params, globalConfig)
+	ops := NewOperations(globalConfig)
 
-	process := func(ctx context.Context) ([]ExtractedFile, error) {
-		archiver := NewArchiver(globalConfig)
-		files, err := archiver.ExtractZip(ctx, key, prefix, limits)
-
-		return files, err
+	extractParams := ExtractParams{
+		Key:    key,
+		Prefix: prefix,
+		Limits: limits,
 	}
 
 	// sync codepath
@@ -83,16 +112,16 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
-		extracted, err := process(ctx)
-		if err != nil {
+		result := ops.Extract(ctx, extractParams)
+		if result.Err != nil {
 			globalMetrics.TotalErrors.Add(1)
-			return writeJSONError(w, "ExtractError", err)
+			return writeJSONError(w, "ExtractError", result.Err)
 		}
 
 		return writeJSONMessage(w, struct {
 			Success        bool
 			ExtractedFiles []ExtractedFile
-		}{true, extracted})
+		}{true, result.ExtractedFiles})
 	}
 
 	// async codepath
@@ -103,23 +132,23 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
-		extracted, err := process(ctx)
+		result := ops.Extract(ctx, extractParams)
 		resValues := url.Values{}
 
-		if err != nil {
-			errMessage := err.Error()
+		if result.Err != nil {
+			errMessage := result.Err.Error()
 
-			if errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(result.Err, context.DeadlineExceeded) {
 				errMessage = "Zip extraction timed out"
 			}
 
 			globalMetrics.TotalErrors.Add(1)
 			resValues.Add("Type", "ExtractError")
 			resValues.Add("Error", errMessage)
-			log.Print("Extraction failed ", err)
+			log.Print("Extraction failed ", result.Err)
 		} else {
 			resValues.Add("Success", "true")
-			for idx, extractedFile := range extracted {
+			for idx, extractedFile := range result.ExtractedFiles {
 				resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Key])", idx+1),
 					extractedFile.Key)
 				resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Size])", idx+1),

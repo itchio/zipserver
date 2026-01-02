@@ -13,6 +13,72 @@ import (
 
 var copyLockTable = NewLockTable()
 
+// Copy copies a file from primary storage to a target storage
+func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
+	storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
+	if storageTargetConfig == nil {
+		return CopyResult{Err: fmt.Errorf("invalid target: %s", params.TargetName)}
+	}
+
+	targetBucket := storageTargetConfig.Bucket
+
+	if params.ExpectedBucket != "" && params.ExpectedBucket != targetBucket {
+		return CopyResult{Err: fmt.Errorf("expected bucket does not match target bucket: %s != %s", params.ExpectedBucket, targetBucket)}
+	}
+
+	storage, err := NewGcsStorage(o.config)
+	if err != nil {
+		return CopyResult{Err: fmt.Errorf("failed to create source storage: %v", err)}
+	}
+
+	targetStorage, err := storageTargetConfig.NewStorageClient()
+	if err != nil {
+		return CopyResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
+	}
+
+	startTime := time.Now()
+
+	reader, headers, err := storage.GetFile(ctx, o.config.Bucket, params.Key)
+	if err != nil {
+		return CopyResult{Err: fmt.Errorf("failed to get file: %v", err)}
+	}
+	defer reader.Close()
+
+	mReader := newMeasuredReader(reader)
+
+	uploadHeaders := http.Header{}
+
+	contentType := headers.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	uploadHeaders.Set("Content-Type", contentType)
+
+	contentDisposition := headers.Get("Content-Disposition")
+	if contentDisposition != "" {
+		uploadHeaders.Set("Content-Disposition", contentDisposition)
+	}
+
+	log.Print("Starting transfer: [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", uploadHeaders)
+	checksumMd5, err := targetStorage.PutFile(ctx, targetBucket, params.Key, mReader, uploadHeaders)
+	if err != nil {
+		return CopyResult{Err: fmt.Errorf("failed to copy file: %v", err)}
+	}
+
+	globalMetrics.TotalCopiedFiles.Add(1)
+	log.Print("Transfer complete: [", params.TargetName, "] ", targetBucket, "/", params.Key,
+		", bytes read: ", formatBytes(float64(mReader.BytesRead)),
+		", duration: ", mReader.Duration.Seconds(),
+		", speed: ", formatBytes(mReader.TransferSpeed()), "/s")
+
+	return CopyResult{
+		Key:      params.Key,
+		Duration: fmt.Sprintf("%.4fs", time.Since(startTime).Seconds()),
+		Size:     mReader.BytesRead,
+		Md5:      checksumMd5,
+	}
+}
+
 func formatBytes(b float64) string {
 	const unit = 1024
 	if b < unit {
@@ -88,23 +154,25 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 
 	storageTargetConfig := globalConfig.GetStorageTargetByName(targetName)
 	if storageTargetConfig == nil {
-		return fmt.Errorf("Invalid target: %s", targetName)
+		return fmt.Errorf("invalid target: %s", targetName)
 	}
 
 	expectedBucket, _ := getParam(params, "bucket")
-	targetBucket := storageTargetConfig.Bucket
-
-	if expectedBucket != "" && expectedBucket != targetBucket {
-		return fmt.Errorf("Expected bucket does not match target bucket: %s != %s", expectedBucket, targetBucket)
-	}
 
 	lockKey := fmt.Sprintf("%s:%s", targetName, key)
 
 	hasLock := copyLockTable.tryLockKey(lockKey)
 
 	if !hasLock {
-		// already being extracted in another handler, ask consumer to wait
+		// already being copied in another handler, ask consumer to wait
 		return writeJSONMessage(w, struct{ Processing bool }{true})
+	}
+
+	ops := NewOperations(globalConfig)
+	copyParams := CopyParams{
+		Key:            key,
+		TargetName:     targetName,
+		ExpectedBucket: expectedBucket,
 	}
 
 	go (func() {
@@ -113,69 +181,19 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
-		storage, err := NewGcsStorage(globalConfig)
+		result := ops.Copy(jobCtx, copyParams)
 
-		if storage == nil {
-			notifyError(callbackURL, fmt.Errorf("Failed to create source storage: %v", err))
+		if result.Err != nil {
+			notifyError(callbackURL, result.Err)
 			return
 		}
-
-		targetStorage, err := storageTargetConfig.NewStorageClient()
-
-		if err != nil {
-			notifyError(callbackURL, fmt.Errorf("Failed to create target storage: %v", err))
-			return
-		}
-
-		startTime := time.Now()
-
-		reader, headers, err := storage.GetFile(jobCtx, globalConfig.Bucket, key)
-
-		if err != nil {
-			log.Print("Failed to get file: ", err)
-			notifyError(callbackURL, err)
-			return
-		}
-
-		defer reader.Close()
-
-		mReader := newMeasuredReader(reader)
-
-		uploadHeaders := http.Header{}
-
-		contentType := headers.Get("Content-Type")
-		if contentType == "" {
-			contentType = "application/octet-stream"
-		}
-
-		uploadHeaders.Set("Content-Type", contentType)
-
-		contentDisposition := headers.Get("Content-Disposition")
-		if contentDisposition != "" {
-			uploadHeaders.Set("Content-Disposition", contentDisposition)
-		}
-
-		log.Print("Starting transfer: [", targetName, "] ", targetBucket, "/", key, " ", uploadHeaders)
-		checksumMd5, err := targetStorage.PutFile(jobCtx, targetBucket, key, mReader, uploadHeaders)
-
-		if err != nil {
-			log.Print("Failed to copy file: ", err)
-			notifyError(callbackURL, err)
-			return
-		}
-
-		globalMetrics.TotalCopiedFiles.Add(1)
-		log.Print("Transfer complete: [", targetName, "] ", targetBucket, "/", key,
-			", bytes read: ", formatBytes(float64(mReader.BytesRead)),
-			", duration: ", mReader.Duration.Seconds(),
-			", speed: ", formatBytes(mReader.TransferSpeed()), "/s")
 
 		resValues := url.Values{}
 		resValues.Add("Success", "true")
-		resValues.Add("Key", key)
-		resValues.Add("Duration", fmt.Sprintf("%.4fs", time.Since(startTime).Seconds()))
-		resValues.Add("Size", fmt.Sprintf("%d", mReader.BytesRead))
-		resValues.Add("Md5", checksumMd5)
+		resValues.Add("Key", result.Key)
+		resValues.Add("Duration", result.Duration)
+		resValues.Add("Size", fmt.Sprintf("%d", result.Size))
+		resValues.Add("Md5", result.Md5)
 
 		notifyCallback(callbackURL, resValues)
 	})()

@@ -14,10 +14,79 @@ import (
 
 var slurpLockTable = NewLockTable()
 
-func slurpHandler(w http.ResponseWriter, r *http.Request) error {
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
+// Slurp downloads a file from a URL and stores it in storage
+func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult {
+	getCtx, cancel := context.WithTimeout(ctx, time.Duration(o.config.FileGetTimeout))
 	defer cancel()
 
+	log.Print("Fetching URL: ", params.URL)
+
+	req, err := http.NewRequestWithContext(getCtx, http.MethodGet, params.URL, nil)
+	if err != nil {
+		return SlurpResult{Err: err}
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return SlurpResult{Err: err}
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		return SlurpResult{Err: fmt.Errorf("failed to fetch file: %d", res.StatusCode)}
+	}
+
+	contentType := params.ContentType
+	if contentType == "" {
+		contentType = res.Header.Get("Content-Type")
+	}
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	body := io.Reader(res.Body)
+
+	if params.MaxBytes > 0 {
+		if uint64(res.ContentLength) > params.MaxBytes {
+			return SlurpResult{Err: fmt.Errorf("Content-Length is greater than max bytes (%d > %d)",
+				res.ContentLength, params.MaxBytes)}
+		}
+
+		var bytesRead uint64
+		body = limitedReader(body, params.MaxBytes, &bytesRead)
+	}
+
+	log.Print("Uploading ", contentType, " (size: ", res.ContentLength, ") to ", params.Key)
+	log.Print("ACL: ", params.ACL)
+	log.Print("Content-Disposition: ", params.ContentDisposition)
+
+	storage, err := NewGcsStorage(o.config)
+	if err != nil {
+		return SlurpResult{Err: fmt.Errorf("failed to create storage: %v", err)}
+	}
+
+	putCtx, putCancel := context.WithTimeout(ctx, time.Duration(o.config.FilePutTimeout))
+	defer putCancel()
+
+	err = storage.PutFileWithSetup(putCtx, o.config.Bucket, params.Key, body, func(req *http.Request) error {
+		req.Header.Add("Content-Type", contentType)
+
+		if params.ContentDisposition != "" {
+			req.Header.Add("Content-Disposition", params.ContentDisposition)
+		}
+
+		req.Header.Add("x-goog-acl", params.ACL)
+		return nil
+	})
+
+	if err != nil {
+		return SlurpResult{Err: err}
+	}
+
+	return SlurpResult{}
+}
+
+func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	params := r.URL.Query()
 
 	key, err := getParam(params, "key")
@@ -43,80 +112,31 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 	}
 
+	ops := NewOperations(globalConfig)
+	slurpParams := SlurpParams{
+		Key:                key,
+		URL:                slurpURL,
+		ContentType:        contentType,
+		MaxBytes:           maxBytes,
+		ACL:                acl,
+		ContentDisposition: contentDisposition,
+	}
+
 	process := func(ctx context.Context) error {
 		if !slurpLockTable.tryLockKey(key) {
-			return fmt.Errorf("Key is currently being processed: %s", key)
+			return fmt.Errorf("key is currently being processed: %s", key)
 		}
 		defer slurpLockTable.releaseKey(key)
 
-		getCtx, cancel := context.WithTimeout(ctx, time.Duration(globalConfig.FileGetTimeout))
-		defer cancel()
-
-		log.Print("Fetching URL: ", slurpURL)
-
-		req, err := http.NewRequestWithContext(getCtx, http.MethodGet, slurpURL, nil)
-		if err != nil {
-			return err
-		}
-
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return err
-		}
-
-		defer res.Body.Close()
-
-		if res.StatusCode != 200 {
-			return fmt.Errorf("Failed to fetch file: %d", res.StatusCode)
-		}
-
-		if contentType == "" {
-			contentType = res.Header.Get("Content-Type")
-		}
-
-		if contentType == "" {
-			contentType = "application/octet-stream"
-		}
-
-		body := io.Reader(res.Body)
-
-		if maxBytes > 0 {
-			if uint64(res.ContentLength) > maxBytes {
-				return fmt.Errorf("Content-Length is greater than max bytes (%d > %d)",
-					res.ContentLength, maxBytes)
-			}
-
-			var bytesRead uint64
-			body = limitedReader(body, maxBytes, &bytesRead)
-		}
-
-		log.Print("Uploading ", contentType, " (size: ", res.ContentLength, ") to ", key)
-		log.Print("ACL: ", acl)
-		log.Print("Content-Disposition: ", contentDisposition)
-
-		storage, err := NewGcsStorage(globalConfig)
-
-		if storage == nil {
-			log.Fatal("Failed to create storage:", err)
-		}
-
-		putCtx, cancel := context.WithTimeout(ctx, time.Duration(globalConfig.FilePutTimeout))
-		defer cancel()
-
-		return storage.PutFileWithSetup(putCtx, globalConfig.Bucket, key, body, func(req *http.Request) error {
-			req.Header.Add("Content-Type", contentType)
-
-			if contentDisposition != "" {
-				req.Header.Add("Content-Disposition", contentDisposition)
-			}
-
-			req.Header.Add("x-goog-acl", acl)
-			return nil
-		})
+		result := ops.Slurp(ctx, slurpParams)
+		return result.Err
 	}
 
 	asyncURL := params.Get("async")
 	if asyncURL == "" {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
+		defer cancel()
+
 		err = process(ctx)
 		if err != nil {
 			return writeJSONError(w, "SlurpError", err)
@@ -129,7 +149,8 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 
 	go (func() {
 		// This job is expected to outlive the incoming request, so create a detached context.
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
+		defer cancel()
 
 		err = process(ctx)
 		log.Print("Notifying " + asyncURL)
@@ -142,13 +163,14 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 			resValues.Add("Success", "true")
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, time.Duration(globalConfig.AsyncNotificationTimeout))
-		defer cancel()
+		notifyCtx, notifyCancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.AsyncNotificationTimeout))
+		defer notifyCancel()
 
 		outBody := bytes.NewBufferString(resValues.Encode())
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, asyncURL, outBody)
+		req, err := http.NewRequestWithContext(notifyCtx, http.MethodPost, asyncURL, outBody)
 		if err != nil {
 			log.Printf("Failed to create callback request: %v", err)
+			return
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 

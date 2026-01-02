@@ -36,6 +36,7 @@ func Test_Metrics(t *testing.T) {
 zipserver_errors_total{host="localhost"} 0
 zipserver_extracted_files_total{host="localhost"} 1
 zipserver_copied_files_total{host="localhost"} 0
+zipserver_deleted_files_total{host="localhost"} 0
 zipserver_downloaded_bytes_total{host="localhost"} 7
 zipserver_uploaded_bytes_total{host="localhost"} 0
 `

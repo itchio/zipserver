@@ -13,6 +13,83 @@ import (
 
 var deleteLockTable = NewLockTable()
 
+// Delete deletes files from a target storage
+func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOperationResult {
+	storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
+	if storageTargetConfig == nil {
+		return DeleteOperationResult{Err: fmt.Errorf("invalid target: %s", params.TargetName)}
+	}
+
+	if storageTargetConfig.Readonly {
+		return DeleteOperationResult{Err: fmt.Errorf("target %s is readonly", params.TargetName)}
+	}
+
+	targetBucket := storageTargetConfig.Bucket
+
+	targetStorage, err := storageTargetConfig.NewStorageClient()
+	if err != nil {
+		return DeleteOperationResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
+	}
+
+	numWorkers := o.config.ExtractionThreads
+	if numWorkers < 1 {
+		numWorkers = 4
+	}
+
+	tasks := make(chan DeleteTask)
+	results := make(chan DeleteResult)
+	done := make(chan struct{}, numWorkers)
+
+	for i := 0; i < numWorkers; i++ {
+		go deleteWorker(ctx, targetStorage, targetBucket, params.TargetName, tasks, results, done)
+	}
+
+	// Send tasks to workers
+	go func() {
+		defer close(tasks)
+		for _, key := range params.Keys {
+			select {
+			case tasks <- DeleteTask{Key: key}:
+			case <-ctx.Done():
+				log.Println("Delete tasks were canceled")
+				return
+			}
+		}
+	}()
+
+	// Collect results
+	activeWorkers := numWorkers
+	deletedCount := 0
+	var deleteErrors []DeleteError
+
+	for activeWorkers > 0 {
+		select {
+		case result := <-results:
+			if result.Error != nil {
+				deleteErrors = append(deleteErrors, DeleteError{
+					Key:   result.Key,
+					Error: result.Error.Error(),
+				})
+			} else {
+				deletedCount++
+				globalMetrics.TotalDeletedFiles.Add(1)
+			}
+		case <-done:
+			activeWorkers--
+		}
+	}
+
+	close(results)
+
+	log.Printf("Delete complete: [%s] deleted %d/%d files", params.TargetName, deletedCount, len(params.Keys))
+
+	return DeleteOperationResult{
+		TotalKeys:   len(params.Keys),
+		DeletedKeys: deletedCount,
+		Errors:      deleteErrors,
+	}
+}
+
 type DeleteTask struct {
 	Key string
 }
@@ -94,77 +171,30 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("target %s is readonly", targetName)
 	}
 
-	targetBucket := storageTargetConfig.Bucket
+	ops := NewOperations(globalConfig)
+	deleteParams := DeleteParams{
+		Keys:       keys,
+		TargetName: targetName,
+	}
 
 	go func() {
 		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
-		targetStorage, err := storageTargetConfig.NewStorageClient()
-		if err != nil {
-			notifyError(callbackURL, fmt.Errorf("failed to create target storage: %v", err))
+		result := ops.Delete(jobCtx, deleteParams)
+
+		if result.Err != nil {
+			notifyError(callbackURL, result.Err)
 			return
 		}
 
-		numWorkers := globalConfig.ExtractionThreads
-		if numWorkers < 1 {
-			numWorkers = 4
-		}
-
-		tasks := make(chan DeleteTask)
-		results := make(chan DeleteResult)
-		done := make(chan struct{}, numWorkers)
-
-		for i := 0; i < numWorkers; i++ {
-			go deleteWorker(jobCtx, targetStorage, targetBucket, targetName, tasks, results, done)
-		}
-
-		// Send tasks to workers
-		go func() {
-			defer close(tasks)
-			for _, key := range keys {
-				select {
-				case tasks <- DeleteTask{Key: key}:
-				case <-jobCtx.Done():
-					log.Println("Delete tasks were canceled")
-					return
-				}
-			}
-		}()
-
-		// Collect results
-		activeWorkers := numWorkers
-		deletedCount := 0
-		var deleteErrors []DeleteError
-
-		for activeWorkers > 0 {
-			select {
-			case result := <-results:
-				if result.Error != nil {
-					deleteErrors = append(deleteErrors, DeleteError{
-						Key:   result.Key,
-						Error: result.Error.Error(),
-					})
-				} else {
-					deletedCount++
-					globalMetrics.TotalDeletedFiles.Add(1)
-				}
-			case <-done:
-				activeWorkers--
-			}
-		}
-
-		close(results)
-
-		log.Printf("Delete complete: [%s] deleted %d/%d files", targetName, deletedCount, len(keys))
-
 		resValues := url.Values{}
-		resValues.Add("Success", fmt.Sprintf("%t", len(deleteErrors) == 0))
-		resValues.Add("TotalKeys", fmt.Sprintf("%d", len(keys)))
-		resValues.Add("DeletedKeys", fmt.Sprintf("%d", deletedCount))
+		resValues.Add("Success", fmt.Sprintf("%t", len(result.Errors) == 0))
+		resValues.Add("TotalKeys", fmt.Sprintf("%d", result.TotalKeys))
+		resValues.Add("DeletedKeys", fmt.Sprintf("%d", result.DeletedKeys))
 
-		if len(deleteErrors) > 0 {
-			errorsJSON, _ := json.Marshal(deleteErrors)
+		if len(result.Errors) > 0 {
+			errorsJSON, _ := json.Marshal(result.Errors)
 			resValues.Add("Errors", string(errorsJSON))
 		}
 

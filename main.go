@@ -3,17 +3,15 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
-	"math/rand"
+	"os"
 	"time"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/go-errors/errors"
 	"github.com/itchio/zipserver/zipserver"
 )
-
-var _ fmt.Formatter
 
 // Build-time variables set via ldflags
 var (
@@ -23,22 +21,64 @@ var (
 )
 
 var (
-	configFname    string
-	listenTo       string
-	dumpConfig     bool
-	serve          string
-	extract        string
-	showVersion    bool
-)
+	app = kingpin.New("zipserver", "A zip file extraction and storage service")
 
-func init() {
-	flag.StringVar(&configFname, "config", zipserver.DefaultConfigFname, "Path to json config file")
-	flag.StringVar(&listenTo, "listen", "127.0.0.1:8090", "Address to listen to")
-	flag.BoolVar(&dumpConfig, "dump", false, "Dump the parsed config and exit")
-	flag.StringVar(&serve, "serve", "", "Serve a given zip from a local HTTP server")
-	flag.StringVar(&extract, "extract", "", "Extract zip file to random name on GCS (requires a config with bucket)")
-	flag.BoolVar(&showVersion, "version", false, "Print version information and exit")
-}
+	// Global flags
+	configFile = app.Flag("config", "Path to config file").
+			Default(zipserver.DefaultConfigFname).
+			Short('c').
+			String()
+
+	// Server command (default behavior)
+	serverCmd    = app.Command("server", "Start HTTP server").Default()
+	serverListen = serverCmd.Flag("listen", "Address to listen on").
+			Default("127.0.0.1:8090").
+			String()
+
+	// Extract command
+	extractCmd          = app.Command("extract", "Extract a zip file to storage")
+	extractKey          = extractCmd.Flag("key", "Storage key of the zip file").String()
+	extractFile         = extractCmd.Flag("file", "Local path to zip file").String()
+	extractPrefix       = extractCmd.Flag("prefix", "Prefix for extracted files").Required().String()
+	extractMaxFileSize  = extractCmd.Flag("max-file-size", "Maximum size per file in bytes").Uint64()
+	extractMaxTotalSize = extractCmd.Flag("max-total-size", "Maximum total extracted size in bytes").Uint64()
+	extractMaxNumFiles  = extractCmd.Flag("max-num-files", "Maximum number of files").Int()
+
+	// Copy command
+	copyCmd    = app.Command("copy", "Copy a file to target storage")
+	copyKey    = copyCmd.Flag("key", "Storage key to copy").Required().String()
+	copyTarget = copyCmd.Flag("target", "Target storage name").Required().String()
+	copyBucket = copyCmd.Flag("bucket", "Expected bucket (optional verification)").String()
+
+	// Delete command
+	deleteCmd    = app.Command("delete", "Delete files from storage")
+	deleteKeys   = deleteCmd.Flag("key", "Storage keys to delete (can be specified multiple times)").Required().Strings()
+	deleteTarget = deleteCmd.Flag("target", "Target storage name").Required().String()
+
+	// List command
+	listCmd = app.Command("list", "List files in a zip archive")
+	listKey = listCmd.Flag("key", "Storage key of the zip file").String()
+	listURL = listCmd.Flag("url", "URL of the zip file").String()
+
+	// Slurp command
+	slurpCmd                = app.Command("slurp", "Download URL and store in storage")
+	slurpKey                = slurpCmd.Flag("key", "Storage key to save as").Required().String()
+	slurpURL                = slurpCmd.Flag("url", "URL to download").Required().String()
+	slurpContentType        = slurpCmd.Flag("content-type", "Content type").String()
+	slurpMaxBytes           = slurpCmd.Flag("max-bytes", "Maximum bytes to download").Uint64()
+	slurpACL                = slurpCmd.Flag("acl", "ACL for the uploaded file").String()
+	slurpContentDisposition = slurpCmd.Flag("content-disposition", "Content disposition header").String()
+
+	// Serve command (serves a local zip file via HTTP)
+	serveCmd  = app.Command("serve", "Serve a local zip file via HTTP")
+	serveFile = serveCmd.Arg("file", "Path to zip file").Required().String()
+
+	// Dump command
+	dumpCmd = app.Command("dump", "Dump parsed config and exit")
+
+	// Version command
+	versionCmd = app.Command("version", "Print version information")
+)
 
 func must(err error) {
 	if err == nil {
@@ -52,61 +92,203 @@ func must(err error) {
 	}
 }
 
-func main() {
-	flag.Parse()
+func outputJSON(v interface{}) {
+	blob, err := json.Marshal(v)
+	if err != nil {
+		log.Fatal("Failed to marshal JSON:", err)
+	}
+	fmt.Println(string(blob))
+}
 
-	if showVersion {
+func main() {
+	cmd, err := app.Parse(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Handle version early (no config needed)
+	if cmd == versionCmd.FullCommand() {
 		fmt.Printf("zipserver %s\n", Version)
 		fmt.Printf("  commit: %s\n", CommitSHA)
 		fmt.Printf("  built:  %s\n", BuildTime)
 		return
 	}
 
-	config, err := zipserver.LoadConfig(configFname)
+	config, err := zipserver.LoadConfig(*configFile)
 	must(err)
 
-	if dumpConfig {
+	switch cmd {
+	case serverCmd.FullCommand():
+		runServer(config)
+	case extractCmd.FullCommand():
+		runExtract(config)
+	case copyCmd.FullCommand():
+		runCopy(config)
+	case deleteCmd.FullCommand():
+		runDelete(config)
+	case listCmd.FullCommand():
+		runList(config)
+	case slurpCmd.FullCommand():
+		runSlurp(config)
+	case serveCmd.FullCommand():
+		runServe(config)
+	case dumpCmd.FullCommand():
 		fmt.Println(config)
-		return
 	}
+}
 
-	if serve != "" {
-		must(zipserver.ServeZip(config, serve))
-		return
-	}
-
-	if extract != "" {
-		archiver := zipserver.NewArchiver(config)
-		limits := zipserver.DefaultExtractLimits(config)
-
-		log.Println("Extraction threads:", limits.ExtractionThreads)
-		log.Println("Bucket:", config.Bucket)
-
-		var letters = []rune("rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz")
-
-		var randChars = make([]rune, 20)
-		for i := range randChars {
-			randChars[i] = letters[rand.Intn(len(letters))]
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
-		defer cancel()
-
-		files, err := archiver.UploadZipFromFile(ctx, extract, string(randChars), limits)
-		if err != nil {
-			log.Fatal(err.Error())
-			return
-		}
-
-		blob, _ := json.Marshal(struct {
-			Success        bool
-			ExtractedFiles []zipserver.ExtractedFile
-		}{true, files})
-
-		fmt.Println(string(blob))
-		return
-	}
-
-	err = zipserver.StartZipServer(listenTo, config)
+func runServer(config *zipserver.Config) {
+	err := zipserver.StartZipServer(*serverListen, config)
 	must(err)
+}
+
+func runExtract(config *zipserver.Config) {
+	if *extractKey == "" && *extractFile == "" {
+		log.Fatal("Either --key or --file must be specified")
+	}
+	if *extractKey != "" && *extractFile != "" {
+		log.Fatal("Only one of --key or --file can be specified")
+	}
+
+	ops := zipserver.NewOperations(config)
+
+	limits := zipserver.DefaultExtractLimits(config)
+	if *extractMaxFileSize > 0 {
+		limits.MaxFileSize = *extractMaxFileSize
+	}
+	if *extractMaxTotalSize > 0 {
+		limits.MaxTotalSize = *extractMaxTotalSize
+	}
+	if *extractMaxNumFiles > 0 {
+		limits.MaxNumFiles = *extractMaxNumFiles
+	}
+
+	params := zipserver.ExtractParams{
+		Key:    *extractKey,
+		File:   *extractFile,
+		Prefix: *extractPrefix,
+		Limits: limits,
+	}
+
+	log.Println("Extraction threads:", limits.ExtractionThreads)
+	log.Println("Bucket:", config.Bucket)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+	defer cancel()
+
+	result := ops.Extract(ctx, params)
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+
+	outputJSON(struct {
+		Success        bool
+		ExtractedFiles []zipserver.ExtractedFile
+	}{true, result.ExtractedFiles})
+}
+
+func runCopy(config *zipserver.Config) {
+	ops := zipserver.NewOperations(config)
+
+	params := zipserver.CopyParams{
+		Key:            *copyKey,
+		TargetName:     *copyTarget,
+		ExpectedBucket: *copyBucket,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+	defer cancel()
+
+	result := ops.Copy(ctx, params)
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+
+	outputJSON(struct {
+		Success  bool
+		Key      string
+		Duration string
+		Size     int64
+		Md5      string
+	}{true, result.Key, result.Duration, result.Size, result.Md5})
+}
+
+func runDelete(config *zipserver.Config) {
+	ops := zipserver.NewOperations(config)
+
+	params := zipserver.DeleteParams{
+		Keys:       *deleteKeys,
+		TargetName: *deleteTarget,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+	defer cancel()
+
+	result := ops.Delete(ctx, params)
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+
+	outputJSON(struct {
+		Success     bool
+		TotalKeys   int
+		DeletedKeys int
+		Errors      []zipserver.DeleteError `json:",omitempty"`
+	}{len(result.Errors) == 0, result.TotalKeys, result.DeletedKeys, result.Errors})
+}
+
+func runList(config *zipserver.Config) {
+	if *listKey == "" && *listURL == "" {
+		log.Fatal("Either --key or --url must be specified")
+	}
+	if *listKey != "" && *listURL != "" {
+		log.Fatal("Only one of --key or --url can be specified")
+	}
+
+	ops := zipserver.NewOperations(config)
+
+	params := zipserver.ListParams{
+		Key: *listKey,
+		URL: *listURL,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.FileGetTimeout))
+	defer cancel()
+
+	result := ops.List(ctx, params)
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+
+	outputJSON(result.Files)
+}
+
+func runSlurp(config *zipserver.Config) {
+	ops := zipserver.NewOperations(config)
+
+	params := zipserver.SlurpParams{
+		Key:                *slurpKey,
+		URL:                *slurpURL,
+		ContentType:        *slurpContentType,
+		MaxBytes:           *slurpMaxBytes,
+		ACL:                *slurpACL,
+		ContentDisposition: *slurpContentDisposition,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
+	defer cancel()
+
+	result := ops.Slurp(ctx, params)
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+
+	outputJSON(struct {
+		Success bool
+	}{true})
+}
+
+func runServe(config *zipserver.Config) {
+	must(zipserver.ServeZip(config, *serveFile))
 }
