@@ -17,6 +17,7 @@ type MetricsCounter struct {
 	TotalErrors          atomic.Int64 `metric:"zipserver_errors_total""`
 	TotalExtractedFiles  atomic.Int64 `metric:"zipserver_extracted_files_total"`
 	TotalCopiedFiles     atomic.Int64 `metric:"zipserver_copied_files_total"`
+	TotalDeletedFiles    atomic.Int64 `metric:"zipserver_deleted_files_total"`
 	TotalBytesDownloaded atomic.Int64 `metric:"zipserver_downloaded_bytes_total"`
 	TotalBytesUploaded   atomic.Int64 `metric:"zipserver_uploaded_bytes_total"`
 }
