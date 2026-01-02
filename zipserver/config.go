@@ -60,7 +60,8 @@ func (s *StorageType) UnmarshalJSON(data []byte) error {
 type StorageConfig struct {
 	Name string
 
-	Type StorageType
+	Type     StorageType
+	Readonly bool `json:",omitempty"`
 
 	// NOTE: GCS not implemented for storage config yet
 	GCSPrivateKeyPath string `json:",omitempty"`

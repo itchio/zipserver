@@ -90,6 +90,10 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("invalid target: %s", targetName)
 	}
 
+	if storageTargetConfig.Readonly {
+		return fmt.Errorf("target %s is readonly", targetName)
+	}
+
 	targetBucket := storageTargetConfig.Bucket
 
 	go func() {
