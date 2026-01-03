@@ -60,7 +60,7 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 	}
 
 	log.Print("Starting transfer: [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", uploadHeaders)
-	checksumMd5, err := targetStorage.PutFile(ctx, targetBucket, params.Key, mReader, uploadHeaders)
+	checksumMd5, err := targetStorage.PutFileWithHeaders(ctx, targetBucket, params.Key, mReader, uploadHeaders)
 	if err != nil {
 		return CopyResult{Err: fmt.Errorf("failed to copy file: %v", err)}
 	}

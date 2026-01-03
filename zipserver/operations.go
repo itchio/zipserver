@@ -13,10 +13,11 @@ func NewOperations(config *Config) *Operations {
 
 // ExtractParams contains parameters for the extract operation
 type ExtractParams struct {
-	Key    string // Storage key of the zip file (mutually exclusive with File)
-	File   string // Local file path (mutually exclusive with Key)
-	Prefix string // Prefix/path where extracted files should be stored
-	Limits *ExtractLimits
+	Key        string // Storage key of the zip file (mutually exclusive with File)
+	File       string // Local file path (mutually exclusive with Key)
+	Prefix     string // Prefix/path where extracted files should be stored
+	Limits     *ExtractLimits
+	TargetName string // Optional: target storage name for extracted files
 }
 
 // ExtractResult contains the result of an extract operation

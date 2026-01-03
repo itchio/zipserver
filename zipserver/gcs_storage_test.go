@@ -65,7 +65,10 @@ func TestPutAndDeleteFile(t *testing.T) {
 	ctx := context.Background()
 
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
-		err := storage.PutFile(ctx, config.Bucket, "zipserver_test.txt", strings.NewReader("hello zipserver!"), "text/plain")
+		err := storage.PutFile(ctx, config.Bucket, "zipserver_test.txt", strings.NewReader("hello zipserver!"), PutOptions{
+			ContentType: "text/plain",
+			ACL:         ACLPublicRead,
+		})
 
 		if err != nil {
 			t.Fatal(err)

@@ -95,12 +95,15 @@ func ServeZip(config *Config, serve string) error {
 	defer putCtxCancel()
 
 	key := "serve.zip"
-	err = storage.PutFile(putCtx, config.Bucket, key, reader, "application/zip")
+	err = storage.PutFile(putCtx, config.Bucket, key, reader, PutOptions{
+		ContentType: "application/zip",
+		ACL:         ACLPublicRead,
+	})
 	if err != nil {
 		return errors.Wrap(err, 0)
 	}
 
-	archiver := &Archiver{storage, config}
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
 
 	prefix := "extracted"
 	_, err = archiver.ExtractZip(ctx, key, prefix, DefaultExtractLimits(config))

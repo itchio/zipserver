@@ -68,16 +68,13 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 	putCtx, putCancel := context.WithTimeout(ctx, time.Duration(o.config.FilePutTimeout))
 	defer putCancel()
 
-	err = storage.PutFileWithSetup(putCtx, o.config.Bucket, params.Key, body, func(req *http.Request) error {
-		req.Header.Add("Content-Type", contentType)
+	opts := PutOptions{
+		ContentType:        contentType,
+		ContentDisposition: params.ContentDisposition,
+		ACL:                ACL(params.ACL),
+	}
 
-		if params.ContentDisposition != "" {
-			req.Header.Add("Content-Disposition", params.ContentDisposition)
-		}
-
-		req.Header.Add("x-goog-acl", params.ACL)
-		return nil
-	})
+	err = storage.PutFile(putCtx, o.config.Bucket, params.Key, body, opts)
 
 	if err != nil {
 		return SlurpResult{Err: err}

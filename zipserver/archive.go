@@ -31,11 +31,29 @@ func init() {
 	mime.AddExtensionType(".ico", "image/x-icon")              // prevent image/vnd.microsoft.icon
 }
 
-// Archiver holds together the storage along with configuration values
+// ArchiveExtractor holds together the storage along with configuration values
 // (credentials, limits etc.)
-type Archiver struct {
-	Storage
+type ArchiveExtractor struct {
+	Storage // Source storage (for reading zips)
 	*Config
+	TargetStorage Storage // Optional: target storage for uploads (if nil, uses source)
+	TargetBucket  string  // Optional: target bucket (if empty, uses config.Bucket)
+}
+
+// getDestinationStorage returns the storage where extracted files are written
+func (a *ArchiveExtractor) getDestinationStorage() Storage {
+	if a.TargetStorage != nil {
+		return a.TargetStorage
+	}
+	return a.Storage
+}
+
+// getDestinationBucket returns the bucket where extracted files are written
+func (a *ArchiveExtractor) getDestinationBucket() string {
+	if a.TargetBucket != "" {
+		return a.TargetBucket
+	}
+	return a.Bucket
 }
 
 // ExtractedFile represents a file extracted from a .zip into a GCS bucket
@@ -44,15 +62,32 @@ type ExtractedFile struct {
 	Size uint64
 }
 
-// NewArchiver creates a new archiver from the given config
-func NewArchiver(config *Config) *Archiver {
+// NewArchiveExtractor creates a new archiver from the given config
+func NewArchiveExtractor(config *Config) *ArchiveExtractor {
 	storage, err := NewGcsStorage(config)
 
 	if storage == nil {
 		log.Fatal("Failed to create storage:", err)
 	}
 
-	return &Archiver{storage, config}
+	return &ArchiveExtractor{Storage: storage, Config: config}
+}
+
+// NewArchiveExtractorWithTarget creates an archiver that reads from source storage
+// but writes to a different target storage
+func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, targetBucket string) *ArchiveExtractor {
+	storage, err := NewGcsStorage(config)
+
+	if storage == nil {
+		log.Fatal("Failed to create storage:", err)
+	}
+
+	return &ArchiveExtractor{
+		Storage:       storage,
+		Config:        config,
+		TargetStorage: targetStorage,
+		TargetBucket:  targetBucket,
+	}
 }
 
 func fetchZipFilename(bucket, key string) string {
@@ -61,7 +96,7 @@ func fetchZipFilename(bucket, key string) string {
 	return bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
 }
 
-func (a *Archiver) fetchZip(ctx context.Context, key string) (string, error) {
+func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string) (string, error) {
 	os.MkdirAll(tmpDir, os.ModeDir|0777)
 
 	fname := fetchZipFilename(a.Bucket, key)
@@ -97,11 +132,11 @@ func (a *Archiver) fetchZip(ctx context.Context, key string) (string, error) {
 }
 
 // delete all files that have been uploaded so far
-func (a *Archiver) abortUpload(files []ExtractedFile) error {
+func (a *ArchiveExtractor) abortUpload(files []ExtractedFile) error {
 	for _, file := range files {
 		// FIXME: code quality - what if we fail here? any retry strategies?
 		ctx := context.Background()
-		a.Storage.DeleteFile(ctx, a.Bucket, file.Key)
+		a.getDestinationStorage().DeleteFile(ctx, a.getDestinationBucket(), file.Key)
 	}
 
 	return nil
@@ -147,7 +182,7 @@ type UploadFileResult struct {
 
 func uploadWorker(
 	ctx context.Context,
-	a *Archiver,
+	a *ArchiveExtractor,
 	tasks <-chan UploadFileTask,
 	results chan<- UploadFileResult,
 	done chan struct{},
@@ -173,7 +208,7 @@ func uploadWorker(
 }
 
 // extracts and sends all files to prefix
-func (a *Archiver) sendZipExtracted(
+func (a *ArchiveExtractor) sendZipExtracted(
 	ctx context.Context,
 	prefix, fname string,
 	limits *ExtractLimits,
@@ -284,7 +319,7 @@ func (a *Archiver) sendZipExtracted(
 
 // sends an individual file from a zip
 // Caller should set the job timeout in ctx.
-func (a *Archiver) extractAndUploadOne(ctx context.Context, key string, file *zip.File) (*ResourceSpec, error) {
+func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, file *zip.File) (*ResourceSpec, error) {
 	readerCloser, err := file.Open()
 	if err != nil {
 		return nil, err
@@ -349,7 +384,7 @@ func (a *Archiver) extractAndUploadOne(ctx context.Context, key string, file *zi
 
 	limited := limitedReader(reader, file.UncompressedSize64, &resource.size)
 
-	err = a.Storage.PutFileWithSetup(ctx, a.Bucket, resource.key, limited, resource.setupRequest)
+	err = a.getDestinationStorage().PutFile(ctx, a.getDestinationBucket(), resource.key, limited, resource.ToPutOptions())
 	if err != nil {
 		return resource, errors.Wrap(err, 0)
 	}
@@ -362,7 +397,7 @@ func (a *Archiver) extractAndUploadOne(ctx context.Context, key string, file *zi
 // ExtractZip downloads the zip at `key` to a temporary file,
 // then extracts its contents and uploads each item to `prefix`
 // Caller should set the job timeout in ctx.
-func (a *Archiver) ExtractZip(
+func (a *ArchiveExtractor) ExtractZip(
 	ctx context.Context,
 	key, prefix string,
 	limits *ExtractLimits,
@@ -378,7 +413,7 @@ func (a *Archiver) ExtractZip(
 }
 
 // Caller should set the job timeout in ctx.
-func (a *Archiver) UploadZipFromFile(
+func (a *ArchiveExtractor) UploadZipFromFile(
 	ctx context.Context,
 	fname, prefix string,
 	limits *ExtractLimits,

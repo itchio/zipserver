@@ -43,6 +43,7 @@ var (
 	extractKey          = extractCmd.Flag("key", "Storage key of the zip file").String()
 	extractFile         = extractCmd.Flag("file", "Local path to zip file").String()
 	extractPrefix       = extractCmd.Flag("prefix", "Prefix for extracted files").Required().String()
+	extractTarget       = extractCmd.Flag("target", "Target storage name for extracted files").String()
 	extractMaxFileSize  = extractCmd.Flag("max-file-size", "Maximum size per file in bytes").Uint64()
 	extractMaxTotalSize = extractCmd.Flag("max-total-size", "Maximum total extracted size in bytes").Uint64()
 	extractMaxNumFiles  = extractCmd.Flag("max-num-files", "Maximum number of files").Int()
@@ -172,14 +173,23 @@ func runExtract(config *zipserver.Config) {
 	}
 
 	params := zipserver.ExtractParams{
-		Key:    *extractKey,
-		File:   *extractFile,
-		Prefix: *extractPrefix,
-		Limits: limits,
+		Key:        *extractKey,
+		File:       *extractFile,
+		Prefix:     *extractPrefix,
+		Limits:     limits,
+		TargetName: *extractTarget,
 	}
 
 	log.Println("Extraction threads:", limits.ExtractionThreads)
-	log.Println("Bucket:", config.Bucket)
+	log.Println("Source bucket:", config.Bucket)
+	if *extractTarget != "" {
+		targetConfig := config.GetStorageTargetByName(*extractTarget)
+		if targetConfig == nil {
+			log.Fatalf("invalid target: %s", *extractTarget)
+		}
+		log.Println("Target:", *extractTarget)
+		log.Println("Target bucket:", targetConfig.Bucket)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
 	defer cancel()

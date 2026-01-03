@@ -44,13 +44,16 @@ func emptyConfig() *Config {
 func Test_ExtractOnGCS(t *testing.T) {
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
 		ctx := context.Background()
-		archiver := &Archiver{storage, config}
+		archiver := &ArchiveExtractor{Storage: storage, Config: config}
 
 		r, err := os.Open("/home/leafo/code/go/etlua.zip")
 		assert.NoError(t, err)
 		defer r.Close()
 
-		err = storage.PutFile(ctx, config.Bucket, "zipserver_test/test.zip", r, "application/zip")
+		err = storage.PutFile(ctx, config.Bucket, "zipserver_test/test.zip", r, PutOptions{
+			ContentType: "application/zip",
+			ACL:         ACLPublicRead,
+		})
 		assert.NoError(t, err)
 
 		_, err = archiver.ExtractZip(ctx, "zipserver_test/test.zip", "zipserver_test/extract", testLimits())
@@ -113,7 +116,7 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 			h, err := storage.getHeaders(bucket, path)
 			assert.NoError(t, err)
 			assert.EqualValues(t, entry.expectedMimeType, h.Get("content-type"))
-			assert.EqualValues(t, "public-read", h.Get("x-goog-acl"))
+			assert.EqualValues(t, "public-read", h.Get("x-acl"))
 
 			if entry.expectedContentEncoding != "" {
 				assert.EqualValues(t, entry.expectedContentEncoding, h.Get("content-encoding"))
@@ -130,7 +133,7 @@ func Test_ExtractInMemory(t *testing.T) {
 	storage, err := NewMemStorage()
 	assert.NoError(t, err)
 
-	archiver := &Archiver{storage, config}
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
 	prefix := "zipserver_test/mem_test_extracted"
 	zipPath := "mem_test.zip"
 
@@ -147,7 +150,10 @@ func Test_ExtractInMemory(t *testing.T) {
 		err = zw.Close()
 		assert.NoError(t, err)
 
-		err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), "application/octet-stream")
+		err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{
+			ContentType: "application/octet-stream",
+			ACL:         ACLPublicRead,
+		})
 		assert.NoError(t, err)
 
 		cb(zl)
@@ -203,6 +209,27 @@ func Test_ExtractInMemory(t *testing.T) {
 				data:                    []byte{0x1F, 0x8B, 0x08, 8, 5, 23, 1, 25, 38},
 				expectedMimeType:        "application/octet-stream",
 				expectedContentEncoding: "gzip",
+			},
+			zipEntry{
+				name:                    "bundle.wasm.br",
+				outName:                 "bundle.wasm.br",
+				data:                    []byte("not really brotli"),
+				expectedMimeType:        "application/wasm",
+				expectedContentEncoding: "br",
+			},
+			zipEntry{
+				name:                    "readme.txt.br",
+				outName:                 "readme.txt.br",
+				data:                    []byte("brotli compressed text"),
+				expectedMimeType:        "text/plain; charset=utf-8",
+				expectedContentEncoding: "br",
+			},
+			zipEntry{
+				name:                    "mystery.bin.br",
+				outName:                 "mystery.bin.br",
+				data:                    []byte("not really brotli either"),
+				expectedMimeType:        "application/octet-stream",
+				expectedContentEncoding: "br",
 			},
 			zipEntry{
 				name:    "__MACOSX/hello",
@@ -335,7 +362,7 @@ func Test_ExtractInMemory(t *testing.T) {
 	assert.NoError(t, err)
 	storage.planForFailure(config.Bucket, fmt.Sprintf("%s/%s", prefix, "3"))
 	storage.putDelay = 200 * time.Millisecond
-	archiver = &Archiver{storage, config}
+	archiver = &ArchiveExtractor{Storage: storage, Config: config}
 
 	withZip(&zipLayout{
 		entries: []zipEntry{
@@ -385,7 +412,7 @@ func TestFetchZipFailing(t *testing.T) {
 	require.False(t, fileExists(path), "test output file existed ahead of time")
 	t.Logf("temp file: %s", path)
 
-	a := &Archiver{
+	a := &ArchiveExtractor{
 		Storage: &mockFailingStorage{t, path},
 		Config: &Config{
 			Bucket: bucket,
@@ -418,11 +445,7 @@ func (m *mockFailingStorage) GetFile(_ context.Context, _, _ string) (io.ReadClo
 	return &mockFailingReadCloser{m.t, m.path}, nil, nil
 }
 
-func (m *mockFailingStorage) PutFile(_ context.Context, _, _ string, contents io.Reader, _ string) error {
-	return nil
-}
-
-func (m *mockFailingStorage) PutFileWithSetup(_ context.Context, _, _ string, contents io.Reader, _ StorageSetupFunc) error {
+func (m *mockFailingStorage) PutFile(_ context.Context, _, _ string, contents io.Reader, _ PutOptions) error {
 	return nil
 }
 

@@ -73,14 +73,7 @@ func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
 	return nil, errors.Wrap(err, 0)
 }
 
-func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, mimeType string) error {
-	return fs.PutFileWithSetup(ctx, bucket, key, contents, func(req *http.Request) error {
-		req.Header.Set("Content-Type", mimeType)
-		return nil
-	})
-}
-
-func (fs *MemStorage) PutFileWithSetup(ctx context.Context, bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
+func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) error {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
@@ -91,24 +84,29 @@ func (fs *MemStorage) PutFileWithSetup(ctx context.Context, bucket, key string, 
 
 	time.Sleep(fs.putDelay)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, "http://127.0.0.1/dummy", nil)
-	if err != nil {
-		return errors.Wrap(err, 0)
-	}
-
-	err = setup(req)
-	if err != nil {
-		return errors.Wrap(err, 0)
-	}
-
 	data, err := io.ReadAll(contents)
 	if err != nil {
 		return errors.Wrap(err, 0)
 	}
 
+	// Build headers from options for test verification
+	headers := http.Header{}
+	if opts.ContentType != "" {
+		headers.Set("Content-Type", opts.ContentType)
+	}
+	if opts.ContentEncoding != "" {
+		headers.Set("Content-Encoding", opts.ContentEncoding)
+	}
+	if opts.ContentDisposition != "" {
+		headers.Set("Content-Disposition", opts.ContentDisposition)
+	}
+	if opts.ACL != "" {
+		headers.Set("x-acl", string(opts.ACL))
+	}
+
 	fs.objects[objectPath] = memObject{
 		data,
-		req.Header,
+		headers,
 	}
 
 	return nil

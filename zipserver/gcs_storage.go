@@ -90,17 +90,8 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 	return trackedBody, res.Header, nil
 }
 
-// PutFile uploads a file to GCS simply
-func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, mimeType string) error {
-	return c.PutFileWithSetup(ctx, bucket, key, contents, func(req *http.Request) error {
-		req.Header.Add("Content-Type", mimeType)
-		req.Header.Add("x-goog-acl", "public-read")
-		return nil
-	})
-}
-
-// PutFileWithSetup uploads a file to GCS letting the user set up the request first
-func (c *GcsStorage) PutFileWithSetup(ctx context.Context, bucket, key string, contents io.Reader, setup StorageSetupFunc) error {
+// PutFile uploads a file to GCS with the given options
+func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) error {
 	httpClient, err := c.httpClient()
 	if err != nil {
 		return err
@@ -113,9 +104,17 @@ func (c *GcsStorage) PutFileWithSetup(ctx context.Context, bucket, key string, c
 		return err
 	}
 
-	err = setup(req)
-	if err != nil {
-		return err
+	if opts.ContentType != "" {
+		req.Header.Set("Content-Type", opts.ContentType)
+	}
+	if opts.ContentEncoding != "" {
+		req.Header.Set("Content-Encoding", opts.ContentEncoding)
+	}
+	if opts.ContentDisposition != "" {
+		req.Header.Set("Content-Disposition", opts.ContentDisposition)
+	}
+	if opts.ACL != "" {
+		req.Header.Set("x-goog-acl", string(opts.ACL))
 	}
 
 	res, err := httpClient.Do(req)

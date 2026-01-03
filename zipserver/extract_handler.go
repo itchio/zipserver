@@ -21,7 +21,30 @@ func (o *Operations) Extract(ctx context.Context, params ExtractParams) ExtractR
 		limits = DefaultExtractLimits(o.config)
 	}
 
-	archiver := NewArchiver(o.config)
+	var archiver *ArchiveExtractor
+
+	if params.TargetName != "" {
+		// Validate target exists
+		storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
+		if storageTargetConfig == nil {
+			return ExtractResult{Err: fmt.Errorf("invalid target: %s", params.TargetName)}
+		}
+
+		// Check readonly flag
+		if storageTargetConfig.Readonly {
+			return ExtractResult{Err: fmt.Errorf("target %s is readonly", params.TargetName)}
+		}
+
+		// Create target storage client
+		targetStorage, err := storageTargetConfig.NewStorageClient()
+		if err != nil {
+			return ExtractResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
+		}
+
+		archiver = NewArchiveExtractorWithTarget(o.config, targetStorage, storageTargetConfig.Bucket)
+	} else {
+		archiver = NewArchiveExtractor(o.config)
+	}
 
 	var files []ExtractedFile
 	var err error
@@ -89,7 +112,16 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	hasLock := extractLockTable.tryLockKey(key)
+	// Optional target parameter
+	targetName := params.Get("target")
+
+	// Use a lock key that includes target to allow parallel extractions to different targets
+	lockKey := key
+	if targetName != "" {
+		lockKey = fmt.Sprintf("%s:%s", targetName, key)
+	}
+
+	hasLock := extractLockTable.tryLockKey(lockKey)
 	if !hasLock {
 		// already being extracted in another handler, ask consumer to wait
 		return writeJSONMessage(w, struct{ Processing bool }{true})
@@ -99,15 +131,16 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	ops := NewOperations(globalConfig)
 
 	extractParams := ExtractParams{
-		Key:    key,
-		Prefix: prefix,
-		Limits: limits,
+		Key:        key,
+		Prefix:     prefix,
+		Limits:     limits,
+		TargetName: targetName,
 	}
 
 	// sync codepath
 	asyncURL := params.Get("async")
 	if asyncURL == "" {
-		defer extractLockTable.releaseKey(key)
+		defer extractLockTable.releaseKey(lockKey)
 
 		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
@@ -126,7 +159,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 
 	// async codepath
 	go (func() {
-		defer extractLockTable.releaseKey(key)
+		defer extractLockTable.releaseKey(lockKey)
 
 		// This job is expected to outlive the incoming request, so create a detached context.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))

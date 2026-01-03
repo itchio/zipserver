@@ -46,8 +46,11 @@ func NewS3Storage(config *StorageConfig) (*S3Storage, error) {
 	}, nil
 }
 
-// upload file and return md5 checksum of transferred bytes
-func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, uploadHeaders http.Header) (string, error) {
+// Compile-time check that S3Storage implements Storage interface
+var _ Storage = (*S3Storage)(nil)
+
+// putFileInternal uploads file with options and returns md5 checksum of transferred bytes
+func (c *S3Storage) putFileInternal(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (string, error) {
 	uploader := s3manager.NewUploaderWithClient(s3.New(c.Session), func(u *s3manager.Uploader) {
 		u.PartSize = 1024 * 1024 * 50 // 50Mb per part to avoid excess API calls
 	})
@@ -65,12 +68,17 @@ func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io
 		Body:   multi,
 	}
 
-	if contentType := uploadHeaders.Get("Content-Type"); contentType != "" {
-		uploadInput.ContentType = aws.String(contentType)
+	if opts.ContentType != "" {
+		uploadInput.ContentType = aws.String(opts.ContentType)
 	}
-
-	if contentDisposition := uploadHeaders.Get("Content-Disposition"); contentDisposition != "" {
-		uploadInput.ContentDisposition = aws.String(contentDisposition)
+	if opts.ContentDisposition != "" {
+		uploadInput.ContentDisposition = aws.String(opts.ContentDisposition)
+	}
+	if opts.ContentEncoding != "" {
+		uploadInput.ContentEncoding = aws.String(opts.ContentEncoding)
+	}
+	if opts.ACL != "" {
+		uploadInput.ACL = aws.String(string(opts.ACL))
 	}
 
 	_, err := uploader.UploadWithContext(ctx, uploadInput)
@@ -86,6 +94,18 @@ func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io
 	checksumStr := fmt.Sprintf("%x", checksum)
 
 	return checksumStr, nil
+}
+
+// PutFileWithHeaders uploads file with custom headers and returns md5 checksum of transferred bytes
+// Used by copy handler which needs the checksum
+func (c *S3Storage) PutFileWithHeaders(ctx context.Context, bucket, key string, contents io.Reader, uploadHeaders http.Header) (string, error) {
+	opts := PutOptions{
+		ContentType:        uploadHeaders.Get("Content-Type"),
+		ContentDisposition: uploadHeaders.Get("Content-Disposition"),
+		ContentEncoding:    uploadHeaders.Get("Content-Encoding"),
+		ACL:                ACLPublicRead,
+	}
+	return c.putFileInternal(ctx, bucket, key, contents, opts)
 }
 
 // get some specific metadata for file
@@ -130,4 +150,35 @@ func (c *S3Storage) DeleteFile(ctx context.Context, bucket, key string) error {
 	}
 
 	return nil
+}
+
+// GetFile implements Storage interface - downloads a file from S3
+func (c *S3Storage) GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, http.Header, error) {
+	svc := s3.New(c.Session)
+	result, err := svc.GetObjectWithContext(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	headers := http.Header{}
+	if result.ContentType != nil {
+		headers.Set("Content-Type", *result.ContentType)
+	}
+	if result.ContentDisposition != nil {
+		headers.Set("Content-Disposition", *result.ContentDisposition)
+	}
+	if result.ContentEncoding != nil {
+		headers.Set("Content-Encoding", *result.ContentEncoding)
+	}
+
+	return result.Body, headers, nil
+}
+
+// PutFile implements Storage interface - uploads a file with the given options
+func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) error {
+	_, err := c.putFileInternal(ctx, bucket, key, contents, opts)
+	return err
 }

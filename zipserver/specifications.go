@@ -2,7 +2,6 @@ package zipserver
 
 import (
 	"fmt"
-	"net/http"
 	"path"
 	"strings"
 )
@@ -25,16 +24,13 @@ func (rs *ResourceSpec) String() string {
 	return fmt.Sprintf("%s (%s%s)", rs.key, rs.contentType, formattedEncoding)
 }
 
-// setupRequest sets the proper HTTP headers on a request for storing this resource
-func (rs *ResourceSpec) setupRequest(req *http.Request) error {
-	// All extracted files must be readable without authentication
-	req.Header.Set("x-goog-acl", "public-read")
-
-	req.Header.Set("content-type", rs.contentType)
-	if rs.contentEncoding != "" {
-		req.Header.Set("content-encoding", rs.contentEncoding)
+// ToPutOptions returns PutOptions for storing this resource
+func (rs *ResourceSpec) ToPutOptions() PutOptions {
+	return PutOptions{
+		ContentType:     rs.contentType,
+		ContentEncoding: rs.contentEncoding,
+		ACL:             ACLPublicRead,
 	}
-	return nil
 }
 
 // RewriteSpec contains rules for rewriting file extensions
