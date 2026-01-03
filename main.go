@@ -28,6 +28,9 @@ var (
 			Default(zipserver.DefaultConfigFname).
 			Short('c').
 			String()
+	threads = app.Flag("threads", "Number of threads for parallel operations").
+		Short('t').
+		Int()
 
 	// Server command (default behavior)
 	serverCmd    = app.Command("server", "Start HTTP server").Default()
@@ -117,6 +120,10 @@ func main() {
 
 	config, err := zipserver.LoadConfig(*configFile)
 	must(err)
+
+	if *threads > 0 {
+		config.ExtractionThreads = *threads
+	}
 
 	switch cmd {
 	case serverCmd.FullCommand():
