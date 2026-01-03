@@ -2,12 +2,15 @@ package zipserver
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"golang.org/x/oauth2/google"
 	"golang.org/x/oauth2/jwt"
@@ -91,17 +94,17 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 }
 
 // PutFile uploads a file to GCS with the given options
-func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) error {
+func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error) {
 	httpClient, err := c.httpClient()
 	if err != nil {
-		return err
+		return PutResult{}, err
 	}
 
 	contents = metricsReader(contents, &globalMetrics.TotalBytesUploaded)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.url(bucket, key, "PUT"), contents)
 	if err != nil {
-		return err
+		return PutResult{}, err
 	}
 
 	if opts.ContentType != "" {
@@ -119,7 +122,7 @@ func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents i
 
 	res, err := httpClient.Do(req)
 	if err != nil {
-		return err
+		return PutResult{}, err
 	}
 
 	defer res.Body.Close()
@@ -127,12 +130,26 @@ func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents i
 	if res.StatusCode != http.StatusOK {
 		body, err := io.ReadAll(res.Body)
 		if err != nil {
-			return err
+			return PutResult{}, err
 		}
-		return fmt.Errorf("%s: %s", res.Status, body)
+		return PutResult{}, fmt.Errorf("%s: %s", res.Status, body)
 	}
 
-	return nil
+	result := PutResult{}
+
+	// Parse MD5 from x-goog-hash header(s)
+	// GCS may return multiple X-Goog-Hash headers (one for crc32c, one for md5)
+	for _, googHash := range res.Header.Values("x-goog-hash") {
+		if strings.HasPrefix(googHash, "md5=") {
+			b64 := strings.TrimPrefix(googHash, "md5=")
+			if decoded, err := base64.StdEncoding.DecodeString(b64); err == nil {
+				result.MD5 = hex.EncodeToString(decoded)
+			}
+			break
+		}
+	}
+
+	return result, nil
 }
 
 // DeleteFile removes a file from a GCS bucket

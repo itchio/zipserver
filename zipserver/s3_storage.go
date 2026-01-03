@@ -49,8 +49,8 @@ func NewS3Storage(config *StorageConfig) (*S3Storage, error) {
 // Compile-time check that S3Storage implements Storage interface
 var _ Storage = (*S3Storage)(nil)
 
-// putFileInternal uploads file with options and returns md5 checksum of transferred bytes
-func (c *S3Storage) putFileInternal(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (string, error) {
+// PutFile implements Storage interface - uploads a file with the given options
+func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error) {
 	uploader := s3manager.NewUploaderWithClient(s3.New(c.Session), func(u *s3manager.Uploader) {
 		u.PartSize = 1024 * 1024 * 50 // 50Mb per part to avoid excess API calls
 	})
@@ -84,28 +84,15 @@ func (c *S3Storage) putFileInternal(ctx context.Context, bucket, key string, con
 	_, err := uploader.UploadWithContext(ctx, uploadInput)
 
 	if err != nil {
-		return "", err
+		return PutResult{}, err
 	}
 
-	// Compute the checksum from the hash.
+	// Compute the checksum from the hash
 	checksum := hash.Sum(nil)
 
-	// Convert the checksum to a hexadecimal string.
-	checksumStr := fmt.Sprintf("%x", checksum)
-
-	return checksumStr, nil
-}
-
-// PutFileWithHeaders uploads file with custom headers and returns md5 checksum of transferred bytes
-// Used by copy handler which needs the checksum
-func (c *S3Storage) PutFileWithHeaders(ctx context.Context, bucket, key string, contents io.Reader, uploadHeaders http.Header) (string, error) {
-	opts := PutOptions{
-		ContentType:        uploadHeaders.Get("Content-Type"),
-		ContentDisposition: uploadHeaders.Get("Content-Disposition"),
-		ContentEncoding:    uploadHeaders.Get("Content-Encoding"),
-		ACL:                ACLPublicRead,
-	}
-	return c.putFileInternal(ctx, bucket, key, contents, opts)
+	return PutResult{
+		MD5: fmt.Sprintf("%x", checksum),
+	}, nil
 }
 
 // get some specific metadata for file
@@ -175,10 +162,4 @@ func (c *S3Storage) GetFile(ctx context.Context, bucket, key string) (io.ReadClo
 	}
 
 	return result.Body, headers, nil
-}
-
-// PutFile implements Storage interface - uploads a file with the given options
-func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) error {
-	_, err := c.putFileInternal(ctx, bucket, key, contents, opts)
-	return err
 }

@@ -50,7 +50,7 @@ func Test_ExtractOnGCS(t *testing.T) {
 		assert.NoError(t, err)
 		defer r.Close()
 
-		err = storage.PutFile(ctx, config.Bucket, "zipserver_test/test.zip", r, PutOptions{
+		_, err = storage.PutFile(ctx, config.Bucket, "zipserver_test/test.zip", r, PutOptions{
 			ContentType: "application/zip",
 			ACL:         ACLPublicRead,
 		})
@@ -150,7 +150,7 @@ func Test_ExtractInMemory(t *testing.T) {
 		err = zw.Close()
 		assert.NoError(t, err)
 
-		err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{
+		_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{
 			ContentType: "application/octet-stream",
 			ACL:         ACLPublicRead,
 		})
@@ -445,8 +445,8 @@ func (m *mockFailingStorage) GetFile(_ context.Context, _, _ string) (io.ReadClo
 	return &mockFailingReadCloser{m.t, m.path}, nil, nil
 }
 
-func (m *mockFailingStorage) PutFile(_ context.Context, _, _ string, contents io.Reader, _ PutOptions) error {
-	return nil
+func (m *mockFailingStorage) PutFile(_ context.Context, _, _ string, contents io.Reader, _ PutOptions) (PutResult, error) {
+	return PutResult{}, nil
 }
 
 func (m *mockFailingStorage) DeleteFile(_ context.Context, _, _ string) error {

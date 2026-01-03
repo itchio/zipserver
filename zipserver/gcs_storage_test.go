@@ -2,6 +2,8 @@ package zipserver
 
 import (
 	"context"
+	"crypto/md5"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -65,7 +67,10 @@ func TestPutAndDeleteFile(t *testing.T) {
 	ctx := context.Background()
 
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
-		err := storage.PutFile(ctx, config.Bucket, "zipserver_test.txt", strings.NewReader("hello zipserver!"), PutOptions{
+		content := "hello zipserver!"
+		expectedMD5 := fmt.Sprintf("%x", md5.Sum([]byte(content)))
+
+		result, err := storage.PutFile(ctx, config.Bucket, "zipserver_test.txt", strings.NewReader(content), PutOptions{
 			ContentType: "text/plain",
 			ACL:         ACLPublicRead,
 		})
@@ -73,6 +78,12 @@ func TestPutAndDeleteFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		if result.MD5 != expectedMD5 {
+			t.Fatalf("MD5 mismatch: got %s, expected %s", result.MD5, expectedMD5)
+		}
+
+		t.Logf("Upload MD5 verified: %s", result.MD5)
 
 		err = storage.DeleteFile(ctx, config.Bucket, "zipserver_test.txt")
 

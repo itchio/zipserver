@@ -74,7 +74,7 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 		ACL:                ACL(params.ACL),
 	}
 
-	err = storage.PutFile(putCtx, o.config.Bucket, params.Key, body, opts)
+	_, err = storage.PutFile(putCtx, o.config.Bucket, params.Key, body, opts)
 
 	if err != nil {
 		return SlurpResult{Err: err}

@@ -46,21 +46,20 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 
 	mReader := newMeasuredReader(reader)
 
-	uploadHeaders := http.Header{}
-
 	contentType := headers.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-	uploadHeaders.Set("Content-Type", contentType)
 
-	contentDisposition := headers.Get("Content-Disposition")
-	if contentDisposition != "" {
-		uploadHeaders.Set("Content-Disposition", contentDisposition)
+	opts := PutOptions{
+		ContentType:        contentType,
+		ContentDisposition: headers.Get("Content-Disposition"),
+		ContentEncoding:    headers.Get("Content-Encoding"),
+		ACL:                ACLPublicRead,
 	}
 
-	log.Print("Starting transfer: [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", uploadHeaders)
-	checksumMd5, err := targetStorage.PutFileWithHeaders(ctx, targetBucket, params.Key, mReader, uploadHeaders)
+	log.Print("Starting transfer: [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", opts)
+	result, err := targetStorage.PutFile(ctx, targetBucket, params.Key, mReader, opts)
 	if err != nil {
 		return CopyResult{Err: fmt.Errorf("failed to copy file: %v", err)}
 	}
@@ -75,7 +74,7 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 		Key:      params.Key,
 		Duration: fmt.Sprintf("%.4fs", time.Since(startTime).Seconds()),
 		Size:     mReader.BytesRead,
-		Md5:      checksumMd5,
+		Md5:      result.MD5,
 	}
 }
 

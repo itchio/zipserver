@@ -7,6 +7,7 @@ package zipserver
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"fmt"
 	"io"
 	"net/http"
@@ -73,20 +74,20 @@ func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
 	return nil, errors.Wrap(err, 0)
 }
 
-func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) error {
+func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error) {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
 	objectPath := fs.objectPath(bucket, key)
 	if _, ok := fs.failingPaths[objectPath]; ok {
-		return errors.Wrap(errors.New("intentional failure"), 0)
+		return PutResult{}, errors.Wrap(errors.New("intentional failure"), 0)
 	}
 
 	time.Sleep(fs.putDelay)
 
 	data, err := io.ReadAll(contents)
 	if err != nil {
-		return errors.Wrap(err, 0)
+		return PutResult{}, errors.Wrap(err, 0)
 	}
 
 	// Build headers from options for test verification
@@ -109,7 +110,12 @@ func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents 
 		headers,
 	}
 
-	return nil
+	// Compute MD5 checksum
+	checksum := md5.Sum(data)
+
+	return PutResult{
+		MD5: fmt.Sprintf("%x", checksum),
+	}, nil
 }
 
 func (fs *MemStorage) DeleteFile(ctx context.Context, bucket, key string) error {

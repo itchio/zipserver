@@ -95,7 +95,7 @@ func ServeZip(config *Config, serve string) error {
 	defer putCtxCancel()
 
 	key := "serve.zip"
-	err = storage.PutFile(putCtx, config.Bucket, key, reader, PutOptions{
+	_, err = storage.PutFile(putCtx, config.Bucket, key, reader, PutOptions{
 		ContentType: "application/zip",
 		ACL:         ACLPublicRead,
 	})

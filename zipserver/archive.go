@@ -60,6 +60,7 @@ func (a *ArchiveExtractor) getDestinationBucket() string {
 type ExtractedFile struct {
 	Key  string
 	Size uint64
+	MD5  string
 }
 
 // NewArchiveExtractor creates a new archiver from the given config
@@ -178,6 +179,7 @@ type UploadFileResult struct {
 	Error error
 	Key   string
 	Size  uint64
+	MD5   string
 }
 
 func uploadWorker(
@@ -194,16 +196,17 @@ func uploadWorker(
 		key := task.Key
 
 		ctx, cancel := context.WithTimeout(ctx, time.Duration(a.Config.FilePutTimeout))
-		resource, err := a.extractAndUploadOne(ctx, key, file)
+		result := a.extractAndUploadOne(ctx, key, file)
 		cancel() // Free resources now instead of deferring till func returns
 
-		if err != nil {
-			log.Print("Failed sending " + key + ": " + err.Error())
-			results <- UploadFileResult{err, key, 0}
+		if result.Error != nil {
+			log.Print("Failed sending " + key + ": " + result.Error.Error())
+			// Return early to abort further work on the first error.
+			results <- result
 			return
 		}
 
-		results <- UploadFileResult{nil, resource.key, resource.size}
+		results <- result
 	}
 }
 
@@ -297,7 +300,11 @@ func (a *ArchiveExtractor) sendZipExtracted(
 				extractError = result.Error
 				cancel()
 			} else {
-				extractedFiles = append(extractedFiles, ExtractedFile{result.Key, result.Size})
+				extractedFiles = append(extractedFiles, ExtractedFile{
+					Key:  result.Key,
+					Size: result.Size,
+					MD5:  result.MD5,
+				})
 				fileCount++
 			}
 		case <-done:
@@ -319,10 +326,10 @@ func (a *ArchiveExtractor) sendZipExtracted(
 
 // sends an individual file from a zip
 // Caller should set the job timeout in ctx.
-func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, file *zip.File) (*ResourceSpec, error) {
+func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, file *zip.File) UploadFileResult {
 	readerCloser, err := file.Open()
 	if err != nil {
-		return nil, err
+		return UploadFileResult{Error: err, Key: key}
 	}
 	defer readerCloser.Close()
 
@@ -339,7 +346,7 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 	_, err = io.Copy(&buffer, io.LimitReader(reader, 512))
 
 	if err != nil {
-		return nil, errors.Wrap(err, 0)
+		return UploadFileResult{Error: err, Key: key}
 	}
 
 	contentMimeType := http.DetectContentType(buffer.Bytes())
@@ -384,14 +391,18 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 
 	limited := limitedReader(reader, file.UncompressedSize64, &resource.size)
 
-	err = a.getDestinationStorage().PutFile(ctx, a.getDestinationBucket(), resource.key, limited, resource.ToPutOptions())
+	putResult, err := a.getDestinationStorage().PutFile(ctx, a.getDestinationBucket(), resource.key, limited, resource.ToPutOptions())
 	if err != nil {
-		return resource, errors.Wrap(err, 0)
+		return UploadFileResult{Error: err, Key: resource.key}
 	}
 
 	globalMetrics.TotalExtractedFiles.Add(1)
 
-	return resource, nil
+	return UploadFileResult{
+		Key:  resource.key,
+		Size: resource.size,
+		MD5:  putResult.MD5,
+	}
 }
 
 // ExtractZip downloads the zip at `key` to a temporary file,

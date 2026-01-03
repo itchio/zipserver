@@ -22,9 +22,14 @@ type PutOptions struct {
 	ACL                ACL
 }
 
+// PutResult contains the result of a PutFile operation
+type PutResult struct {
+	MD5 string // hex-encoded MD5 checksum of uploaded bytes
+}
+
 // Storage is a place we can get files from, put files into, or delete files from
 type Storage interface {
 	GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, http.Header, error)
-	PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) error
+	PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error)
 	DeleteFile(ctx context.Context, bucket, key string) error
 }
