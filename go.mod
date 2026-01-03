@@ -5,7 +5,6 @@ go 1.24.0
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/aws/aws-sdk-go v1.55.8
-	github.com/go-errors/errors v1.5.1
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/oauth2 v0.33.0
 )

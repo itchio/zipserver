@@ -8,13 +8,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"sync"
 	"time"
-
-	errors "github.com/go-errors/errors"
 )
 
 type memObject struct {
@@ -56,8 +55,7 @@ func (fs *MemStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadC
 		return io.NopCloser(bytes.NewReader(obj.data)), obj.headers, nil
 	}
 
-	err := fmt.Errorf("%s: object not found", objectPath)
-	return nil, nil, errors.Wrap(err, 0)
+	return nil, nil, fmt.Errorf("%s: object not found", objectPath)
 }
 
 func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
@@ -70,8 +68,7 @@ func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
 		return obj.headers, nil
 	}
 
-	err := fmt.Errorf("%s: object not found", objectPath)
-	return nil, errors.Wrap(err, 0)
+	return nil, fmt.Errorf("%s: object not found", objectPath)
 }
 
 func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error) {
@@ -80,14 +77,14 @@ func (fs *MemStorage) PutFile(ctx context.Context, bucket, key string, contents 
 
 	objectPath := fs.objectPath(bucket, key)
 	if _, ok := fs.failingPaths[objectPath]; ok {
-		return PutResult{}, errors.Wrap(errors.New("intentional failure"), 0)
+		return PutResult{}, errors.New("intentional failure")
 	}
 
 	time.Sleep(fs.putDelay)
 
 	data, err := io.ReadAll(contents)
 	if err != nil {
-		return PutResult{}, errors.Wrap(err, 0)
+		return PutResult{}, err
 	}
 
 	// Build headers from options for test verification

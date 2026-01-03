@@ -9,8 +9,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	errors "github.com/go-errors/errors"
 )
 
 type memoryHttpHandler struct {
@@ -23,11 +21,7 @@ type memoryHttpHandler struct {
 var _ http.Handler = (*memoryHttpHandler)(nil)
 
 func printError(err error) {
-	if se, ok := err.(*errors.Error); ok {
-		log.Printf("error: %s", se.ErrorStack())
-	} else {
-		log.Printf("error: %s", se.Error())
-	}
+	log.Printf("error: %s", err.Error())
 }
 
 func dumpError(w http.ResponseWriter, err error) {
@@ -80,12 +74,12 @@ func ServeZip(config *Config, serve string) error {
 
 	storage, err := NewMemStorage()
 	if err != nil {
-		return errors.Wrap(err, 0)
+		return err
 	}
 
 	reader, err := os.Open(serve)
 	if err != nil {
-		return errors.Wrap(err, 0)
+		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
@@ -100,7 +94,7 @@ func ServeZip(config *Config, serve string) error {
 		ACL:         ACLPublicRead,
 	})
 	if err != nil {
-		return errors.Wrap(err, 0)
+		return err
 	}
 
 	archiver := &ArchiveExtractor{Storage: storage, Config: config}
@@ -108,7 +102,7 @@ func ServeZip(config *Config, serve string) error {
 	prefix := "extracted"
 	_, err = archiver.ExtractZip(ctx, key, prefix, DefaultExtractLimits(config))
 	if err != nil {
-		return errors.Wrap(err, 0)
+		return err
 	}
 
 	handler := &memoryHttpHandler{

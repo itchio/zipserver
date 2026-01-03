@@ -2,11 +2,10 @@ package zipserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
-
-	errors "github.com/go-errors/errors"
 )
 
 // DefaultConfigFname is the default name for zipserver's config file
@@ -195,7 +194,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 func LoadConfig(fname string) (*Config, error) {
 	jsonBlob, err := os.ReadFile(fname)
 	if err != nil {
-		return nil, errors.Wrap(err, 0)
+		return nil, err
 	}
 
 	config := defaultConfig

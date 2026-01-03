@@ -16,8 +16,6 @@ import (
 	"time"
 
 	"archive/zip"
-
-	errors "github.com/go-errors/errors"
 )
 
 var (
@@ -105,14 +103,14 @@ func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string) (string, er
 
 	src, _, err := a.Storage.GetFile(ctx, a.Bucket, key)
 	if err != nil {
-		return "", errors.Wrap(err, 0)
+		return "", err
 	}
 
 	defer src.Close()
 
 	dest, err := os.Create(fname)
 	if err != nil {
-		return "", errors.Wrap(err, 0)
+		return "", err
 	}
 	_, err = os.Stat(fname)
 
@@ -126,7 +124,7 @@ func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string) (string, er
 
 	_, err = io.Copy(dest, src)
 	if err != nil {
-		return "", errors.Wrap(err, 0)
+		return "", err
 	}
 
 	return fname, nil
@@ -218,15 +216,14 @@ func (a *ArchiveExtractor) sendZipExtracted(
 ) ([]ExtractedFile, error) {
 	zipReader, err := zip.OpenReader(fname)
 	if err != nil {
-		return nil, errors.Wrap(err, 0)
+		return nil, err
 	}
 
 	defer zipReader.Close()
 
 	if len(zipReader.File) > limits.MaxNumFiles {
-		err := fmt.Errorf("Too many files in zip (%v > %v)",
+		return nil, fmt.Errorf("Too many files in zip (%v > %v)",
 			len(zipReader.File), limits.MaxNumFiles)
-		return nil, errors.Wrap(err, 0)
 	}
 
 	extractedFiles := []ExtractedFile{}
@@ -243,20 +240,17 @@ func (a *ArchiveExtractor) sendZipExtracted(
 		}
 
 		if len(file.Name) > limits.MaxFileNameLength {
-			err := fmt.Errorf("Zip contains file paths that are too long")
-			return nil, errors.Wrap(err, 0)
+			return nil, fmt.Errorf("Zip contains file paths that are too long")
 		}
 
 		if file.UncompressedSize64 > limits.MaxFileSize {
-			err := fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
-			return nil, errors.Wrap(err, 0)
+			return nil, fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
 		}
 
 		byteCount += file.UncompressedSize64
 
 		if byteCount > limits.MaxTotalSize {
-			err := fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
-			return nil, errors.Wrap(err, 0)
+			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
 		}
 
 		fileList = append(fileList, file)

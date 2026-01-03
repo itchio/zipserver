@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/go-errors/errors"
 	"github.com/itchio/zipserver/zipserver"
 )
 
@@ -89,11 +88,7 @@ func must(err error) {
 		return
 	}
 
-	if se, ok := err.(*errors.Error); ok {
-		log.Fatal(se.ErrorStack())
-	} else {
-		log.Fatal(err.Error())
-	}
+	log.Fatal(err)
 }
 
 func outputJSON(v interface{}) {
