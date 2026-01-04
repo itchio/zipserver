@@ -1,6 +1,8 @@
 package zipserver
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/md5"
 	"fmt"
@@ -89,6 +91,86 @@ func TestPutAndDeleteFile(t *testing.T) {
 
 		if err != nil {
 			t.Fatal(err)
+		}
+	})
+}
+
+func TestGetReaderAtRangeEfficiency(t *testing.T) {
+	ctx := context.Background()
+
+	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
+		// Create a zip with uncompressed data to make it large enough to see efficiency gains
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+
+		// Add files with Store (no compression) to ensure predictable size
+		for i := 0; i < 10; i++ {
+			header := &zip.FileHeader{
+				Name:   fmt.Sprintf("file%d.bin", i),
+				Method: zip.Store, // No compression
+			}
+			f, err := zw.CreateHeader(header)
+			if err != nil {
+				t.Fatalf("create file: %v", err)
+			}
+			// Write 100KB of pseudo-random data per file (1MB total)
+			padding := make([]byte, 100*1024)
+			for j := range padding {
+				padding[j] = byte((j * 17) % 256) // Pseudo-random pattern
+			}
+			if _, err := f.Write(padding); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatalf("close zip: %v", err)
+		}
+
+		zipData := buf.Bytes()
+		zipSize := int64(len(zipData))
+		t.Logf("Test zip size: %d bytes", zipSize)
+
+		// Upload the test zip
+		testKey := "zipserver_range_test.zip"
+		_, err := storage.PutFile(ctx, config.Bucket, testKey, bytes.NewReader(zipData), PutOptions{
+			ContentType: "application/zip",
+		})
+		if err != nil {
+			t.Fatalf("upload test zip: %v", err)
+		}
+		defer storage.DeleteFile(ctx, config.Bucket, testKey)
+
+		// Get a ReaderAt and list the zip contents
+		readerAt, size, err := storage.GetReaderAt(ctx, config.Bucket, testKey, 0)
+		if err != nil {
+			t.Fatalf("GetReaderAt: %v", err)
+		}
+		defer readerAt.Close()
+
+		if size != zipSize {
+			t.Fatalf("size mismatch: got %d, expected %d", size, zipSize)
+		}
+
+		// Use zip.NewReader which should only read the central directory
+		zipReader, err := zip.NewReader(readerAt, size)
+		if err != nil {
+			t.Fatalf("zip.NewReader: %v", err)
+		}
+
+		// Verify we got the right files
+		if len(zipReader.File) != 10 {
+			t.Fatalf("expected 10 files, got %d", len(zipReader.File))
+		}
+
+		bytesRead := readerAt.BytesRead()
+		t.Logf("Bytes read: %d / %d (%.2f%%)", bytesRead, zipSize, float64(bytesRead)/float64(zipSize)*100)
+
+		// The central directory + EOCD should be much smaller than the full zip
+		// For a 1MB zip with 10 files, we expect to read only a few KB
+		// Use 5% as threshold - actual should be < 1%
+		maxExpectedBytes := uint64(zipSize / 20)
+		if bytesRead > maxExpectedBytes {
+			t.Errorf("Read too many bytes: %d > %d (expected < 5%% of file)", bytesRead, maxExpectedBytes)
 		}
 	})
 }

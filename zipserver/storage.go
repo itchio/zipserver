@@ -31,6 +31,7 @@ type PutResult struct {
 type ReaderAtCloser interface {
 	io.ReaderAt
 	io.Closer
+	BytesRead() uint64 // Returns total bytes read so far
 }
 
 // Storage is a place we can get files from, put files into, or delete files from

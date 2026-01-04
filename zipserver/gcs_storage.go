@@ -211,6 +211,10 @@ func (r *gcsReaderAt) Close() error {
 	return nil // No resources to release
 }
 
+func (r *gcsReaderAt) BytesRead() uint64 {
+	return r.bytesRead
+}
+
 // GetReaderAt returns a ReaderAt for the file, suitable for random access reads.
 // This is more efficient than GetFile for operations that only need partial file access.
 // maxBytes limits the total bytes that can be read (0 = unlimited).

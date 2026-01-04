@@ -117,6 +117,10 @@ func (r *memReaderAt) Close() error {
 	return nil
 }
 
+func (r *memReaderAt) BytesRead() uint64 {
+	return r.bytesRead
+}
+
 func (fs *MemStorage) GetReaderAt(ctx context.Context, bucket, key string, maxBytes uint64) (ReaderAtCloser, int64, error) {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
