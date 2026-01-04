@@ -60,9 +60,28 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 	log.Print("ACL: ", params.ACL)
 	log.Print("Content-Disposition: ", params.ContentDisposition)
 
-	storage, err := NewGcsStorage(o.config)
-	if err != nil {
-		return SlurpResult{Err: fmt.Errorf("failed to create storage: %v", err)}
+	var storage Storage
+	var bucket string
+
+	if params.TargetName != "" {
+		storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
+		if storageTargetConfig == nil {
+			return SlurpResult{Err: fmt.Errorf("invalid target: %s", params.TargetName)}
+		}
+		if storageTargetConfig.Readonly {
+			return SlurpResult{Err: fmt.Errorf("target %s is readonly", params.TargetName)}
+		}
+		storage, err = storageTargetConfig.NewStorageClient()
+		if err != nil {
+			return SlurpResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
+		}
+		bucket = storageTargetConfig.Bucket
+	} else {
+		storage, err = NewGcsStorage(o.config)
+		if err != nil {
+			return SlurpResult{Err: fmt.Errorf("failed to create storage: %v", err)}
+		}
+		bucket = o.config.Bucket
 	}
 
 	putCtx, putCancel := context.WithTimeout(ctx, time.Duration(o.config.FilePutTimeout))
@@ -74,7 +93,7 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 		ACL:                ACL(params.ACL),
 	}
 
-	_, err = storage.PutFile(putCtx, o.config.Bucket, params.Key, body, opts)
+	_, err = storage.PutFile(putCtx, bucket, params.Key, body, opts)
 
 	if err != nil {
 		return SlurpResult{Err: err}
@@ -100,6 +119,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 	maxBytesStr := params.Get("max_bytes")
 	acl := params.Get("acl")
 	contentDisposition := params.Get("content_disposition")
+	targetName := params.Get("target")
 
 	var maxBytes uint64
 	if maxBytesStr != "" {
@@ -117,13 +137,18 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		MaxBytes:           maxBytes,
 		ACL:                acl,
 		ContentDisposition: contentDisposition,
+		TargetName:         targetName,
 	}
 
 	process := func(ctx context.Context) error {
-		if !slurpLockTable.tryLockKey(key) {
-			return fmt.Errorf("key is currently being processed: %s", key)
+		lockKey := key
+		if targetName != "" {
+			lockKey = fmt.Sprintf("%s:%s", targetName, key)
 		}
-		defer slurpLockTable.releaseKey(key)
+		if !slurpLockTable.tryLockKey(lockKey) {
+			return fmt.Errorf("key is currently being processed: %s", lockKey)
+		}
+		defer slurpLockTable.releaseKey(lockKey)
 
 		result := ops.Slurp(ctx, slurpParams)
 		return result.Err

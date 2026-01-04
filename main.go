@@ -72,6 +72,7 @@ var (
 	slurpMaxBytes           = slurpCmd.Flag("max-bytes", "Maximum bytes to download").Uint64()
 	slurpACL                = slurpCmd.Flag("acl", "ACL for the uploaded file").String()
 	slurpContentDisposition = slurpCmd.Flag("content-disposition", "Content disposition header").String()
+	slurpTarget             = slurpCmd.Flag("target", "Target storage name for uploaded file").String()
 
 	// Testzip command (serves a local zip file via HTTP for debugging)
 	testzipCmd          = app.Command("testzip", "Extract and serve a local zip file via HTTP for debugging")
@@ -294,6 +295,19 @@ func runSlurp(config *zipserver.Config) {
 		MaxBytes:           *slurpMaxBytes,
 		ACL:                *slurpACL,
 		ContentDisposition: *slurpContentDisposition,
+		TargetName:         *slurpTarget,
+	}
+
+	log.Println("Source URL:", *slurpURL)
+	if *slurpTarget != "" {
+		targetConfig := config.GetStorageTargetByName(*slurpTarget)
+		if targetConfig == nil {
+			log.Fatalf("invalid target: %s", *slurpTarget)
+		}
+		log.Println("Target:", *slurpTarget)
+		log.Println("Target bucket:", targetConfig.Bucket)
+	} else {
+		log.Println("Target bucket:", config.Bucket)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))

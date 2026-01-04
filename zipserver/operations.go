@@ -76,6 +76,7 @@ type SlurpParams struct {
 	MaxBytes           uint64 // Optional: maximum bytes to download
 	ACL                string // Optional: ACL for the uploaded file
 	ContentDisposition string // Optional: content disposition header
+	TargetName         string // Optional: target storage name for uploaded file
 }
 
 // SlurpResult contains the result of a slurp operation

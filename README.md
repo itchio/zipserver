@@ -43,7 +43,7 @@ zipserver <command> --help    # Show help for a specific command
 | `copy` | Copy a file to target storage | Source read, target write |
 | `delete` | Delete files from storage | Target write |
 | `list` | List files in a zip archive | Source read (or URL) |
-| `slurp` | Download a URL and store it | Source write |
+| `slurp` | Download a URL and store it | Source write, or optional target write |
 | `testzip` | Extract and serve a local zip file via HTTP for debugging | local only |
 | `dump` | Dump parsed config and exit | n/a |
 | `version` | Print version information | n/a |
@@ -144,12 +144,19 @@ Download a file from a URL and store it in storage.
 
 **CLI:**
 ```bash
+# Store in primary storage
 zipserver slurp --url https://example.com/file.zip --key uploads/file.zip
+
+# Store in a target storage
+zipserver slurp --url https://example.com/file.zip --key uploads/file.zip --target s3backup
 ```
 
 **HTTP API:**
 ```bash
 curl "http://localhost:8090/slurp?url=https://example.com/file.zip&key=uploads/file.zip"
+
+# With target storage
+curl "http://localhost:8090/slurp?url=https://example.com/file.zip&key=uploads/file.zip&target=s3backup"
 ```
 
 ## Testzip (Local)
@@ -165,10 +172,10 @@ zipserver testzip ./my_file.zip
 The top-level storage settings in `zipserver.json` (for example
 `PrivateKeyPath`, `ClientEmail`, `Bucket`) define the primary/source storage
 used for reads and default writes. You can also configure additional storage
-targets (S3 or GCS) for `copy`, `delete`, and `extract` operations. When a
-target is specified (for example `--target s3backup` or `target=s3backup`),
-reads still come from the primary/source storage and writes go to the target
-bucket. Targets marked `Readonly` cannot be written to.
+targets (S3 or GCS) for `copy`, `delete`, `extract`, and `slurp` operations.
+When a target is specified (for example `--target s3backup` or
+`target=s3backup`), reads still come from the primary/source storage and writes
+go to the target bucket. Targets marked `Readonly` cannot be written to.
 
 Example target entries:
 

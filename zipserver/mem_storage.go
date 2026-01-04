@@ -33,12 +33,50 @@ type MemStorage struct {
 // interface guard
 var _ Storage = (*MemStorage)(nil)
 
-// NewMemStorage creates a new fs storage working in the given directory
+// namedMemStorages is a registry of named MemStorage instances for testing
+var (
+	namedMemStorages      = make(map[string]*MemStorage)
+	namedMemStoragesMutex sync.Mutex
+)
+
+// NewMemStorage creates a new MemStorage instance
 func NewMemStorage() (*MemStorage, error) {
 	return &MemStorage{
 		objects:      make(map[string]memObject),
 		failingPaths: make(map[string]struct{}),
 	}, nil
+}
+
+// GetNamedMemStorage returns a shared MemStorage instance by name, creating it if needed.
+// This allows tests to access the same storage instance that operations use.
+func GetNamedMemStorage(name string) *MemStorage {
+	namedMemStoragesMutex.Lock()
+	defer namedMemStoragesMutex.Unlock()
+
+	if storage, ok := namedMemStorages[name]; ok {
+		return storage
+	}
+
+	storage := &MemStorage{
+		objects:      make(map[string]memObject),
+		failingPaths: make(map[string]struct{}),
+	}
+	namedMemStorages[name] = storage
+	return storage
+}
+
+// ClearNamedMemStorage removes a named storage instance from the registry
+func ClearNamedMemStorage(name string) {
+	namedMemStoragesMutex.Lock()
+	defer namedMemStoragesMutex.Unlock()
+	delete(namedMemStorages, name)
+}
+
+// ClearAllNamedMemStorages removes all named storage instances from the registry
+func ClearAllNamedMemStorages() {
+	namedMemStoragesMutex.Lock()
+	defer namedMemStoragesMutex.Unlock()
+	namedMemStorages = make(map[string]*MemStorage)
 }
 
 func (fs *MemStorage) objectPath(bucket, key string) string {

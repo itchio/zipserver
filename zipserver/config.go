@@ -27,16 +27,19 @@ type StorageType int
 const (
 	GCS StorageType = iota // Google Cloud Storage
 	S3                     // Amazon S3 Storage
+	Mem                    // Memory Storage (for testing)
 )
 
 var storageTypeString = map[string]StorageType{
 	"GCS": GCS,
 	"S3":  S3,
+	"Mem": Mem,
 }
 
 var storageTypeInt = map[StorageType]string{
 	GCS: "GCS",
 	S3:  "S3",
+	Mem: "Mem",
 }
 
 func (s *StorageType) MarshalJSON() ([]byte, error) {
@@ -82,6 +85,12 @@ func (sc *StorageConfig) NewStorageClient() (Storage, error) {
 		return NewS3Storage(sc)
 	case GCS:
 		return NewGcsStorageWithCredentials(sc.GCSPrivateKeyPath, sc.GCSClientEmail)
+	case Mem:
+		// Use named storage if a name is provided, allowing tests to access the same instance
+		if sc.Name != "" {
+			return GetNamedMemStorage(sc.Name), nil
+		}
+		return NewMemStorage()
 	default:
 		return nil, fmt.Errorf("unsupported storage type")
 	}
@@ -113,6 +122,8 @@ func (s *StorageConfig) Validate() error {
 		if s.S3Region == "" {
 			return missingFieldError("S3Region")
 		}
+	} else if s.Type == Mem {
+		// Mem storage doesn't require any credentials
 	}
 
 	if s.Bucket == "" {
