@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"sync/atomic"
+	"syscall"
 )
 
 var globalMetrics = &MetricsCounter{}
@@ -44,7 +45,22 @@ func (m *MetricsCounter) RenderMetrics(config *Config) string {
 
 	}
 
+	userCPU, systemCPU := getCPUTime()
+	metrics.WriteString(fmt.Sprintf("zipserver_cpu_user_seconds_total{host=\"%s\"} %f\n", hostname, userCPU))
+	metrics.WriteString(fmt.Sprintf("zipserver_cpu_system_seconds_total{host=\"%s\"} %f\n", hostname, systemCPU))
+
 	return metrics.String()
+}
+
+// getCPUTime returns the cumulative user and system CPU time for this process
+func getCPUTime() (userSeconds, systemSeconds float64) {
+	var rusage syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &rusage); err != nil {
+		return 0, 0
+	}
+	userSeconds = float64(rusage.Utime.Sec) + float64(rusage.Utime.Usec)/1e6
+	systemSeconds = float64(rusage.Stime.Sec) + float64(rusage.Stime.Usec)/1e6
+	return
 }
 
 // wrap a reader to count bytes read into the counter

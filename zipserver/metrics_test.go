@@ -32,13 +32,18 @@ func Test_Metrics(t *testing.T) {
 		MetricsHost: "localhost",
 	}
 
-	expectedMetrics := `zipserver_requests_total{host="localhost"} 1
-zipserver_errors_total{host="localhost"} 0
-zipserver_extracted_files_total{host="localhost"} 1
-zipserver_copied_files_total{host="localhost"} 0
-zipserver_deleted_files_total{host="localhost"} 0
-zipserver_downloaded_bytes_total{host="localhost"} 7
-zipserver_uploaded_bytes_total{host="localhost"} 0
-`
-	assert.Equal(t, expectedMetrics, metrics.RenderMetrics(config))
+	rendered := metrics.RenderMetrics(config)
+
+	// Check counter metrics (exact values)
+	assert.Contains(t, rendered, `zipserver_requests_total{host="localhost"} 1`)
+	assert.Contains(t, rendered, `zipserver_errors_total{host="localhost"} 0`)
+	assert.Contains(t, rendered, `zipserver_extracted_files_total{host="localhost"} 1`)
+	assert.Contains(t, rendered, `zipserver_copied_files_total{host="localhost"} 0`)
+	assert.Contains(t, rendered, `zipserver_deleted_files_total{host="localhost"} 0`)
+	assert.Contains(t, rendered, `zipserver_downloaded_bytes_total{host="localhost"} 7`)
+	assert.Contains(t, rendered, `zipserver_uploaded_bytes_total{host="localhost"} 0`)
+
+	// Check CPU metrics are present (values vary per run)
+	assert.Contains(t, rendered, `zipserver_cpu_user_seconds_total{host="localhost"}`)
+	assert.Contains(t, rendered, `zipserver_cpu_system_seconds_total{host="localhost"}`)
 }
