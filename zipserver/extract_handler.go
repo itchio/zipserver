@@ -66,7 +66,7 @@ func (o *Operations) Extract(ctx context.Context, params ExtractParams) ExtractR
 	return ExtractResult{ExtractedFiles: files}
 }
 
-func loadLimits(params url.Values, config *Config) *ExtractLimits {
+func loadLimits(params url.Values, config *Config) (*ExtractLimits, error) {
 	limits := DefaultExtractLimits(config)
 
 	{
@@ -104,11 +104,22 @@ func loadLimits(params url.Values, config *Config) *ExtractLimits {
 		}
 	}
 
-	if filter := params.Get("filter"); filter != "" {
+	filter := params.Get("filter")
+	onlyFiles := params["only_files[]"]
+
+	if filter != "" && len(onlyFiles) > 0 {
+		return nil, fmt.Errorf("only_files[] and filter cannot be used together")
+	}
+
+	if filter != "" {
 		limits.IncludeGlob = filter
 	}
 
-	return limits
+	if len(onlyFiles) > 0 {
+		limits.OnlyFiles = onlyFiles
+	}
+
+	return limits, nil
 }
 
 func extractHandler(w http.ResponseWriter, r *http.Request) error {
@@ -138,7 +149,11 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		return writeJSONMessage(w, struct{ Processing bool }{true})
 	}
 
-	limits := loadLimits(params, globalConfig)
+	limits, err := loadLimits(params, globalConfig)
+	if err != nil {
+		extractLockTable.releaseKey(lockKey)
+		return writeJSONError(w, "InvalidParams", err)
+	}
 	ops := NewOperations(globalConfig)
 
 	extractParams := ExtractParams{

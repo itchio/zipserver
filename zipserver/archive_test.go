@@ -638,6 +638,109 @@ func Test_GlobFiltering(t *testing.T) {
 	})
 }
 
+func Test_OnlyFilesFiltering(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	assert.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	prefix := "zipserver_test/only_files_test"
+	zipPath := "only_files_test.zip"
+
+	withZip := func(entries []zipEntry, cb func()) {
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		(&zipLayout{entries: entries}).Write(t, zw)
+		err := zw.Close()
+		assert.NoError(t, err)
+		_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+		assert.NoError(t, err)
+		cb()
+	}
+
+	t.Run("extract specific files only", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "file1.txt", data: []byte("file1")},
+			{name: "file2.txt", data: []byte("file2")},
+			{name: "file3.txt", data: []byte("file3")},
+		}, func() {
+			limits := testLimits()
+			limits.OnlyFiles = []string{"file1.txt", "file3.txt"}
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+
+			names := make(map[string]bool)
+			for _, f := range files {
+				names[f.Key] = true
+			}
+			assert.True(t, names[prefix+"/file1.txt"])
+			assert.True(t, names[prefix+"/file3.txt"])
+			assert.False(t, names[prefix+"/file2.txt"])
+		})
+	})
+
+	t.Run("missing files silently skipped", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "exists.txt", data: []byte("exists")},
+		}, func() {
+			limits := testLimits()
+			limits.OnlyFiles = []string{"exists.txt", "does_not_exist.txt"}
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+			assert.Contains(t, files[0].Key, "exists.txt")
+		})
+	})
+
+	t.Run("empty only_files extracts all", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "a.txt", data: []byte("a")},
+			{name: "b.txt", data: []byte("b")},
+		}, func() {
+			limits := testLimits()
+			limits.OnlyFiles = []string{}
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+		})
+	})
+
+	t.Run("only_files with subdirectory paths", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "dir/file1.txt", data: []byte("file1")},
+			{name: "dir/file2.txt", data: []byte("file2")},
+			{name: "other/file.txt", data: []byte("other")},
+		}, func() {
+			limits := testLimits()
+			limits.OnlyFiles = []string{"dir/file1.txt", "other/file.txt"}
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+		})
+	})
+
+	t.Run("only_files no matches extracts nothing", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "file.txt", data: []byte("text")},
+			{name: "data.json", data: []byte("json")},
+		}, func() {
+			limits := testLimits()
+			limits.OnlyFiles = []string{"nonexistent.txt"}
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 0)
+		})
+	})
+}
+
 // TestFetchZipFailing simulates a download failing after the ouptut file has been created,
 // and makes sure the incomplete file is removed.
 func TestFetchZipFailing(t *testing.T) {

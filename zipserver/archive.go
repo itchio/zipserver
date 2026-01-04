@@ -198,6 +198,20 @@ func shouldIncludeFile(fname string, pattern string) (bool, error) {
 	return doublestar.Match(pattern, fname)
 }
 
+// shouldIncludeFileByList returns true if the file is in the only_files list.
+// An empty list matches all files.
+func shouldIncludeFileByList(fname string, onlyFiles []string) bool {
+	if len(onlyFiles) == 0 {
+		return true
+	}
+	for _, allowed := range onlyFiles {
+		if fname == allowed {
+			return true
+		}
+	}
+	return false
+}
+
 // UploadFileTask contains the information needed to extract a single file from a .zip
 type UploadFileTask struct {
 	File *zip.File
@@ -274,8 +288,13 @@ func (a *ArchiveExtractor) sendZipExtracted(
 			continue
 		}
 
-		// Check include glob filter
-		if limits.IncludeGlob != "" {
+		// Check only_files list first (takes precedence if specified)
+		if len(limits.OnlyFiles) > 0 {
+			if !shouldIncludeFileByList(file.Name, limits.OnlyFiles) {
+				continue
+			}
+		} else if limits.IncludeGlob != "" {
+			// Check include glob filter
 			included, err := shouldIncludeFile(file.Name, limits.IncludeGlob)
 			if err != nil {
 				return nil, fmt.Errorf("invalid glob pattern %q: %w", limits.IncludeGlob, err)

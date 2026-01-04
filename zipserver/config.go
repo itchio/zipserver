@@ -19,7 +19,8 @@ type ExtractLimits struct {
 	MaxNumFiles       int
 	MaxFileNameLength int
 	ExtractionThreads int
-	IncludeGlob       string // Glob pattern for file inclusion (empty = all files)
+	IncludeGlob       string   // Glob pattern for file inclusion (empty = all files)
+	OnlyFiles         []string // Exact file paths to extract (mutually exclusive with IncludeGlob)
 	MaxInputZipSize   uint64
 }
 
