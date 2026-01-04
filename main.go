@@ -46,6 +46,7 @@ var (
 	extractMaxFileSize  = extractCmd.Flag("max-file-size", "Maximum size per file in bytes").Uint64()
 	extractMaxTotalSize = extractCmd.Flag("max-total-size", "Maximum total extracted size in bytes").Uint64()
 	extractMaxNumFiles  = extractCmd.Flag("max-num-files", "Maximum number of files").Int()
+	extractFilter       = extractCmd.Flag("filter", "Glob pattern to filter extracted files (e.g., '*.png', 'assets/**/*.js')").String()
 
 	// Copy command
 	copyCmd    = app.Command("copy", "Copy a file to target storage")
@@ -165,6 +166,9 @@ func runExtract(config *zipserver.Config) {
 	}
 	if *extractMaxNumFiles > 0 {
 		limits.MaxNumFiles = *extractMaxNumFiles
+	}
+	if *extractFilter != "" {
+		limits.IncludeGlob = *extractFilter
 	}
 
 	params := zipserver.ExtractParams{

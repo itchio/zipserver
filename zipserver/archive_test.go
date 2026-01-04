@@ -401,6 +401,102 @@ func Test_ExtractInMemory(t *testing.T) {
 	})
 }
 
+func Test_GlobFiltering(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	assert.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	prefix := "zipserver_test/glob_test"
+	zipPath := "glob_test.zip"
+
+	withZip := func(entries []zipEntry, cb func()) {
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		(&zipLayout{entries: entries}).Write(t, zw)
+		err := zw.Close()
+		assert.NoError(t, err)
+		_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+		assert.NoError(t, err)
+		cb()
+	}
+
+	t.Run("filter by extension", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "image.png", data: []byte("png data")},
+			{name: "script.js", data: []byte("js data")},
+			{name: "style.css", data: []byte("css data")},
+		}, func() {
+			limits := testLimits()
+			limits.IncludeGlob = "*.png"
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+			assert.Contains(t, files[0].Key, "image.png")
+		})
+	})
+
+	t.Run("filter with directory glob", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "assets/img/logo.png", data: []byte("logo")},
+			{name: "assets/img/banner.png", data: []byte("banner")},
+			{name: "assets/css/style.css", data: []byte("css")},
+			{name: "readme.txt", data: []byte("readme")},
+		}, func() {
+			limits := testLimits()
+			limits.IncludeGlob = "assets/**/*.png"
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+		})
+	})
+
+	t.Run("empty filter extracts all", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "a.txt", data: []byte("a")},
+			{name: "b.txt", data: []byte("b")},
+		}, func() {
+			limits := testLimits()
+			limits.IncludeGlob = ""
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+		})
+	})
+
+	t.Run("invalid pattern returns error", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "test.txt", data: []byte("test")},
+		}, func() {
+			limits := testLimits()
+			limits.IncludeGlob = "[invalid"
+
+			_, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid glob pattern")
+		})
+	})
+
+	t.Run("filter no matches extracts nothing", func(t *testing.T) {
+		withZip([]zipEntry{
+			{name: "file.txt", data: []byte("text")},
+			{name: "data.json", data: []byte("json")},
+		}, func() {
+			limits := testLimits()
+			limits.IncludeGlob = "*.png"
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 0)
+		})
+	})
+}
+
 // TestFetchZipFailing simulates a download failing after the ouptut file has been created,
 // and makes sure the incomplete file is removed.
 func TestFetchZipFailing(t *testing.T) {

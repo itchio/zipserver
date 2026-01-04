@@ -97,6 +97,10 @@ func loadLimits(params url.Values, config *Config) *ExtractLimits {
 		}
 	}
 
+	if filter := params.Get("filter"); filter != "" {
+		limits.IncludeGlob = filter
+	}
+
 	return limits
 }
 

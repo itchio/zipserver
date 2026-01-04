@@ -1,6 +1,7 @@
 package zipserver
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/md5"
@@ -15,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"archive/zip"
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 var (
@@ -165,6 +166,15 @@ func shouldIgnoreFile(fname string) bool {
 	return false
 }
 
+// shouldIncludeFile returns true if the file matches the include pattern.
+// An empty pattern matches all files.
+func shouldIncludeFile(fname string, pattern string) (bool, error) {
+	if pattern == "" {
+		return true, nil
+	}
+	return doublestar.Match(pattern, fname)
+}
+
 // UploadFileTask contains the information needed to extract a single file from a .zip
 type UploadFileTask struct {
 	File *zip.File
@@ -237,6 +247,17 @@ func (a *ArchiveExtractor) sendZipExtracted(
 		if shouldIgnoreFile(file.Name) {
 			log.Printf("Ignoring file %s", file.Name)
 			continue
+		}
+
+		// Check include glob filter
+		if limits.IncludeGlob != "" {
+			included, err := shouldIncludeFile(file.Name, limits.IncludeGlob)
+			if err != nil {
+				return nil, fmt.Errorf("invalid glob pattern %q: %w", limits.IncludeGlob, err)
+			}
+			if !included {
+				continue
+			}
 		}
 
 		if len(file.Name) > limits.MaxFileNameLength {

@@ -19,6 +19,7 @@ type ExtractLimits struct {
 	MaxNumFiles       int
 	MaxFileNameLength int
 	ExtractionThreads int
+	IncludeGlob       string // Glob pattern for file inclusion (empty = all files)
 }
 
 type StorageType int

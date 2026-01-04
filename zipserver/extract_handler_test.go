@@ -21,3 +21,18 @@ func Test_Limits(t *testing.T) {
 	el = loadLimits(values, &defaultConfig)
 	assert.EqualValues(t, el.MaxFileSize, customMaxFileSize)
 }
+
+func Test_LimitsWithFilter(t *testing.T) {
+	values, err := url.ParseQuery("filter=*.png")
+	assert.NoError(t, err)
+
+	el := loadLimits(values, &defaultConfig)
+	assert.EqualValues(t, "*.png", el.IncludeGlob)
+
+	// empty filter should not be set
+	values, err = url.ParseQuery("")
+	assert.NoError(t, err)
+
+	el = loadLimits(values, &defaultConfig)
+	assert.EqualValues(t, "", el.IncludeGlob)
+}
