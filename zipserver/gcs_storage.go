@@ -34,16 +34,25 @@ type GcsStorage struct {
 // interface guard
 var _ Storage = (*GcsStorage)(nil)
 
-// NewGcsStorage returns a new GCS-backed storage
+// NewGcsStorage returns a new GCS-backed storage using main config credentials
 func NewGcsStorage(config *Config) (*GcsStorage, error) {
-	pemBytes, err := os.ReadFile(config.PrivateKeyPath)
+	return NewGcsStorageWithCredentials(config.PrivateKeyPath, config.ClientEmail)
+}
+
+// NewGcsStorageWithCredentials returns a new GCS-backed storage using explicit credentials
+func NewGcsStorageWithCredentials(privateKeyPath, clientEmail string) (*GcsStorage, error) {
+	if privateKeyPath == "" || clientEmail == "" {
+		return nil, fmt.Errorf("GCS credentials require both privateKeyPath and clientEmail")
+	}
+
+	pemBytes, err := os.ReadFile(privateKeyPath)
 
 	if err != nil {
 		return nil, err
 	}
 
 	jwtConfig := &jwt.Config{
-		Email:      config.ClientEmail,
+		Email:      clientEmail,
 		PrivateKey: pemBytes,
 		TokenURL:   google.JWTTokenURL,
 		Scopes:     []string{scope},

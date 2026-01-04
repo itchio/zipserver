@@ -63,7 +63,7 @@ type StorageConfig struct {
 	Type     StorageType
 	Readonly bool `json:",omitempty"`
 
-	// NOTE: GCS not implemented for storage config yet
+	// GCS target credentials (service account PEM key + client email)
 	GCSPrivateKeyPath string `json:",omitempty"`
 	GCSClientEmail    string `json:",omitempty"`
 
@@ -76,12 +76,12 @@ type StorageConfig struct {
 }
 
 // TODO: eventually this should be a factory that can return different storage types
-func (sc *StorageConfig) NewStorageClient() (*S3Storage, error) {
+func (sc *StorageConfig) NewStorageClient() (Storage, error) {
 	switch sc.Type {
 	case S3:
 		return NewS3Storage(sc)
 	case GCS:
-		return nil, fmt.Errorf("GCS storage type is not supported yet")
+		return NewGcsStorageWithCredentials(sc.GCSPrivateKeyPath, sc.GCSClientEmail)
 	default:
 		return nil, fmt.Errorf("unsupported storage type")
 	}

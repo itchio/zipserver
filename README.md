@@ -162,7 +162,15 @@ zipserver testzip ./my_file.zip
 
 ## Storage Targets
 
-The top-level storage settings in `zipserver.json` (for example `PrivateKeyPath`, `ClientEmail`, `Bucket`) define the primary/source storage used for reads and default writes. You can also configure additional storage targets (S3 only; GCS targets are not supported yet) for `copy`, `delete`, and `extract` operations. When a target is specified (for example `--target s3backup` or `target=s3backup`), reads still come from the primary/source storage and writes go to the target bucket. Targets marked `Readonly` cannot be written to.
+The top-level storage settings in `zipserver.json` (for example
+`PrivateKeyPath`, `ClientEmail`, `Bucket`) define the primary/source storage
+used for reads and default writes. You can also configure additional storage
+targets (S3 or GCS) for `copy`, `delete`, and `extract` operations. When a
+target is specified (for example `--target s3backup` or `target=s3backup`),
+reads still come from the primary/source storage and writes go to the target
+bucket. Targets marked `Readonly` cannot be written to.
+
+Example target entries:
 
 ```json
 {
@@ -175,6 +183,13 @@ The top-level storage settings in `zipserver.json` (for example `PrivateKeyPath`
       "S3Endpoint": "s3.amazonaws.com",
       "S3Region": "us-east-1",
       "Bucket": "my-backup-bucket"
+    },
+    {
+      "Name": "gcsbackup",
+      "Type": "GCS",
+      "GCSPrivateKeyPath": "/path/to/target/key.pem",
+      "GCSClientEmail": "target-service@project.iam.gserviceaccount.com",
+      "Bucket": "my-gcs-backup-bucket"
     }
   ]
 }
@@ -182,7 +197,9 @@ The top-level storage settings in `zipserver.json` (for example `PrivateKeyPath`
 
 ## GCS Authentication and Permissions
 
-The key file in your config should be the PEM-encoded private key for a service account which has permissions to view and create objects on your chosen GCS bucket.
+The key file in your config should be the PEM-encoded private key for a service
+account which has permissions to view and create objects on your chosen GCS
+bucket.
 
 The bucket needs correct access settings:
 

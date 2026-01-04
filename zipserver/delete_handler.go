@@ -106,7 +106,7 @@ type DeleteError struct {
 
 func deleteWorker(
 	ctx context.Context,
-	storage *S3Storage,
+	storage Storage,
 	bucket, targetName string,
 	tasks <-chan DeleteTask,
 	results chan<- DeleteResult,
