@@ -25,6 +25,20 @@ Create a config file `zipserver.json`:
 
 More config settings can be found in `zipserver/config.go`.
 
+## Limits
+
+All limits are configured in `zipserver.json` using the names below. For `extract` and `list`, you can override limits per request via HTTP query parameters. CLI overrides are available for `extract` via flags, and `--threads` can override `ExtractionThreads`. A value of `0` means "unbounded" for all limits except `ExtractionThreads` (which is forced to at least 1).
+
+| Config field | Applies to | Description | Default |
+| --- | --- | --- | --- |
+| `MaxInputZipSize` | list, extract | Maximum size (bytes) of the input zip file (compressed). | `104857600` |
+| `MaxFileSize` | extract | Maximum uncompressed size (bytes) for a single file. | `209715200` |
+| `MaxTotalSize` | extract | Maximum total uncompressed size (bytes) across all files. | `524288000` |
+| `MaxNumFiles` | extract | Maximum number of files in the archive. | `100` |
+| `MaxFileNameLength` | extract | Maximum path length for a file name in the archive. | `255` |
+| `ExtractionThreads` | extract | Number of worker threads used during extraction. | `4` |
+| `MaxListFiles` | list | Maximum number of files returned by list. | `50000` |
+
 ## Usage
 
 Zipserver can run as an HTTP server or execute operations directly via CLI commands. Operational commands output JSON; `server`, `testzip`, `dump`, and `version` print human-readable output.
