@@ -56,7 +56,7 @@ zipserver <command> --help    # Show help for a specific command
 | `extract` | Extract a zip file to storage | Source read, optional target write |
 | `copy` | Copy a file to target storage | Source read, target write |
 | `delete` | Delete files from storage | Target write |
-| `list` | List files in a zip archive | Source read (or URL) |
+| `list` | List files in a zip archive | Source read, URL, or local file |
 | `slurp` | Download a URL and store it | Source write, or optional target write |
 | `testzip` | Extract and serve a local zip file via HTTP for debugging | local only |
 | `dump` | Dump parsed config and exit | n/a |
@@ -136,21 +136,28 @@ curl -X POST "http://localhost:8090/delete" \
 
 ## List
 
-List files in a zip archive without extracting.
+List files in a zip archive without extracting. Returns JSON with filenames and uncompressed sizes.
 
 **CLI:**
 ```bash
-# From storage
+# From storage (uses efficient range requests - only reads zip metadata)
 zipserver list --key zips/my_file.zip
 
-# From URL
+# From URL (downloads entire file)
 zipserver list --url https://example.com/file.zip
+
+# From local file
+zipserver list --file ./local.zip
 ```
+
+When using `--key`, zipserver uses HTTP range requests to read only the zip's central directory (typically < 1% of the file size). This significantly reduces bandwidth and storage operation costs for large zip files.
 
 **HTTP API:**
 ```bash
 curl "http://localhost:8090/list?key=zips/my_file.zip"
 ```
+
+The HTTP API also uses range requests when listing by key.
 
 ## Slurp
 
