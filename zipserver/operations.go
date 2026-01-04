@@ -58,8 +58,9 @@ type DeleteOperationResult struct {
 
 // ListParams contains parameters for the list operation
 type ListParams struct {
-	Key string // Storage key of the zip file (mutually exclusive with URL)
-	URL string // URL of the zip file (mutually exclusive with Key)
+	Key  string // Storage key of the zip file (mutually exclusive with URL/File)
+	URL  string // URL of the zip file (mutually exclusive with Key/File)
+	File string // Local path to zip file (mutually exclusive with Key/URL)
 }
 
 // ListResult contains the result of a list operation

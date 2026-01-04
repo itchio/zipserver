@@ -96,6 +96,40 @@ func (fs *MemStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadC
 	return nil, nil, fmt.Errorf("%s: object not found", objectPath)
 }
 
+// memReaderAt wraps bytes.Reader to implement ReaderAtCloser with read limits
+type memReaderAt struct {
+	*bytes.Reader
+	maxBytes  uint64
+	bytesRead uint64
+}
+
+func (r *memReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	toRead := uint64(len(p))
+	if r.maxBytes > 0 && r.bytesRead+toRead > r.maxBytes {
+		return 0, fmt.Errorf("max read limit exceeded (%d bytes)", r.maxBytes)
+	}
+	n, err = r.Reader.ReadAt(p, off)
+	r.bytesRead += uint64(n)
+	return n, err
+}
+
+func (r *memReaderAt) Close() error {
+	return nil
+}
+
+func (fs *MemStorage) GetReaderAt(ctx context.Context, bucket, key string, maxBytes uint64) (ReaderAtCloser, int64, error) {
+	fs.mutex.Lock()
+	defer fs.mutex.Unlock()
+
+	objectPath := fs.objectPath(bucket, key)
+
+	if obj, ok := fs.objects[objectPath]; ok {
+		return &memReaderAt{Reader: bytes.NewReader(obj.data), maxBytes: maxBytes}, int64(len(obj.data)), nil
+	}
+
+	return nil, 0, fmt.Errorf("%s: object not found", objectPath)
+}
+
 func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()

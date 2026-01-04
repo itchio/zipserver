@@ -27,9 +27,17 @@ type PutResult struct {
 	MD5 string // hex-encoded MD5 checksum of uploaded bytes
 }
 
+// ReaderAtCloser combines io.ReaderAt with io.Closer for seekable reads
+type ReaderAtCloser interface {
+	io.ReaderAt
+	io.Closer
+}
+
 // Storage is a place we can get files from, put files into, or delete files from
 type Storage interface {
 	GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, http.Header, error)
+	// GetReaderAt returns a ReaderAt for random access reads. maxBytes limits total bytes read (0 = unlimited).
+	GetReaderAt(ctx context.Context, bucket, key string, maxBytes uint64) (ReaderAtCloser, int64, error)
 	PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error)
 	DeleteFile(ctx context.Context, bucket, key string) error
 }

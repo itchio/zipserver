@@ -25,7 +25,10 @@ func (o *Operations) List(ctx context.Context, params ListParams) ListResult {
 	if params.URL != "" {
 		return o.listFromURL(ctx, params.URL)
 	}
-	return ListResult{Err: fmt.Errorf("either Key or URL must be specified")}
+	if params.File != "" {
+		return o.listFromFile(params.File)
+	}
+	return ListResult{Err: fmt.Errorf("either Key, URL, or File must be specified")}
 }
 
 func (o *Operations) listFromBucket(ctx context.Context, key string) ListResult {
@@ -34,36 +37,36 @@ func (o *Operations) listFromBucket(ctx context.Context, key string) ListResult 
 		return ListResult{Err: err}
 	}
 
-	reader, headers, err := storage.GetFile(ctx, o.config.Bucket, key)
+	readerAt, size, err := storage.GetReaderAt(ctx, o.config.Bucket, key, o.config.MaxInputZipSize)
 	if err != nil {
 		return ListResult{Err: err}
 	}
-	defer reader.Close()
+	defer readerAt.Close()
 
-	if headers != nil && o.config.MaxInputZipSize > 0 {
-		if contentLength := headers.Get("Content-Length"); contentLength != "" {
-			size, err := strconv.ParseInt(contentLength, 10, 64)
-			if err != nil {
-				return ListResult{Err: fmt.Errorf("invalid Content-Length: %w", err)}
-			}
-			if err := checkContentLength(o.config.MaxInputZipSize, size); err != nil {
-				return ListResult{Err: err}
-			}
+	if o.config.MaxInputZipSize > 0 {
+		if err := checkContentLength(o.config.MaxInputZipSize, size); err != nil {
+			return ListResult{Err: err}
 		}
 	}
 
-	var body []byte
-	if o.config.MaxInputZipSize > 0 {
-		var bytesRead uint64
-		body, err = io.ReadAll(limitedReader(reader, o.config.MaxInputZipSize, &bytesRead))
-	} else {
-		body, err = io.ReadAll(reader)
-	}
+	zipFile, err := zip.NewReader(readerAt, size)
 	if err != nil {
 		return ListResult{Err: err}
 	}
 
-	return o.listZipBytes(body)
+	if o.config.MaxListFiles > 0 && len(zipFile.File) > o.config.MaxListFiles {
+		return ListResult{Err: fmt.Errorf("zip too many files (max %d)", o.config.MaxListFiles)}
+	}
+
+	var files []fileTuple
+	for _, file := range zipFile.File {
+		files = append(files, fileTuple{
+			Filename: file.Name,
+			Size:     file.UncompressedSize64,
+		})
+	}
+
+	return ListResult{Files: files}
 }
 
 func (o *Operations) listFromURL(ctx context.Context, url string) ListResult {
@@ -100,6 +103,28 @@ func (o *Operations) listFromURL(ctx context.Context, url string) ListResult {
 	}
 
 	return o.listZipBytes(body)
+}
+
+func (o *Operations) listFromFile(path string) ListResult {
+	zipFile, err := zip.OpenReader(path)
+	if err != nil {
+		return ListResult{Err: err}
+	}
+	defer zipFile.Close()
+
+	if o.config.MaxListFiles > 0 && len(zipFile.File) > o.config.MaxListFiles {
+		return ListResult{Err: fmt.Errorf("zip too many files (max %d)", o.config.MaxListFiles)}
+	}
+
+	var files []fileTuple
+	for _, file := range zipFile.File {
+		files = append(files, fileTuple{
+			Filename: file.Name,
+			Size:     file.UncompressedSize64,
+		})
+	}
+
+	return ListResult{Files: files}
 }
 
 func (o *Operations) listZipBytes(body []byte) ListResult {

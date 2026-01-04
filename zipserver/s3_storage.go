@@ -139,6 +139,85 @@ func (c *S3Storage) DeleteFile(ctx context.Context, bucket, key string) error {
 	return nil
 }
 
+// s3ReaderAt implements ReaderAtCloser using S3 range requests
+type s3ReaderAt struct {
+	svc       *s3.S3
+	bucket    string
+	key       string
+	size      int64
+	maxBytes  uint64 // maximum total bytes to read (0 = unlimited)
+	bytesRead uint64 // total bytes read so far
+	ctx       context.Context
+}
+
+func (r *s3ReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	if off >= r.size {
+		return 0, io.EOF
+	}
+
+	end := off + int64(len(p)) - 1
+	if end >= r.size {
+		end = r.size - 1
+	}
+
+	toRead := uint64(end - off + 1)
+	if r.maxBytes > 0 && r.bytesRead+toRead > r.maxBytes {
+		return 0, fmt.Errorf("max read limit exceeded (%d bytes)", r.maxBytes)
+	}
+
+	rangeStr := fmt.Sprintf("bytes=%d-%d", off, end)
+	result, err := r.svc.GetObjectWithContext(r.ctx, &s3.GetObjectInput{
+		Bucket: aws.String(r.bucket),
+		Key:    aws.String(r.key),
+		Range:  aws.String(rangeStr),
+	})
+	if err != nil {
+		return 0, err
+	}
+	defer result.Body.Close()
+
+	n, err = io.ReadFull(result.Body, p[:end-off+1])
+	r.bytesRead += uint64(n)
+	return n, err
+}
+
+func (r *s3ReaderAt) Close() error {
+	return nil // No resources to release
+}
+
+// GetReaderAt returns a ReaderAt for the file, suitable for random access reads.
+// This is more efficient than GetFile for operations that only need partial file access.
+// maxBytes limits the total bytes that can be read (0 = unlimited).
+func (c *S3Storage) GetReaderAt(ctx context.Context, bucket, key string, maxBytes uint64) (ReaderAtCloser, int64, error) {
+	svc := s3.New(c.Session)
+
+	// Get file size via HeadObject
+	head, err := svc.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	size := int64(0)
+	if head.ContentLength != nil {
+		size = *head.ContentLength
+	}
+	if size == 0 {
+		return nil, 0, fmt.Errorf("server did not return Content-Length")
+	}
+
+	return &s3ReaderAt{
+		svc:      svc,
+		bucket:   bucket,
+		key:      key,
+		size:     size,
+		maxBytes: maxBytes,
+		ctx:      ctx,
+	}, size, nil
+}
+
 // GetFile implements Storage interface - downloads a file from S3
 func (c *S3Storage) GetFile(ctx context.Context, bucket, key string) (io.ReadCloser, http.Header, error) {
 	svc := s3.New(c.Session)

@@ -161,6 +161,98 @@ func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents i
 	return result, nil
 }
 
+// gcsReaderAt implements ReaderAtCloser using HTTP Range requests
+type gcsReaderAt struct {
+	client    *http.Client
+	url       string
+	size      int64
+	maxBytes  uint64 // maximum total bytes to read (0 = unlimited)
+	bytesRead uint64 // total bytes read so far
+	ctx       context.Context
+}
+
+func (r *gcsReaderAt) ReadAt(p []byte, off int64) (n int, err error) {
+	if off >= r.size {
+		return 0, io.EOF
+	}
+
+	end := off + int64(len(p)) - 1
+	if end >= r.size {
+		end = r.size - 1
+	}
+
+	toRead := uint64(end - off + 1)
+	if r.maxBytes > 0 && r.bytesRead+toRead > r.maxBytes {
+		return 0, fmt.Errorf("max read limit exceeded (%d bytes)", r.maxBytes)
+	}
+
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, end))
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusPartialContent {
+		return 0, fmt.Errorf("range request failed: %s", resp.Status)
+	}
+
+	n, err = io.ReadFull(resp.Body, p[:end-off+1])
+	r.bytesRead += uint64(n)
+	return n, err
+}
+
+func (r *gcsReaderAt) Close() error {
+	return nil // No resources to release
+}
+
+// GetReaderAt returns a ReaderAt for the file, suitable for random access reads.
+// This is more efficient than GetFile for operations that only need partial file access.
+// maxBytes limits the total bytes that can be read (0 = unlimited).
+func (c *GcsStorage) GetReaderAt(ctx context.Context, bucket, key string, maxBytes uint64) (ReaderAtCloser, int64, error) {
+	httpClient, err := c.httpClient()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	url := c.url(bucket, key, "HEAD")
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, 0, errors.New(res.Status + " " + url)
+	}
+
+	size := res.ContentLength
+	if size < 0 {
+		return nil, 0, errors.New("server did not return Content-Length")
+	}
+
+	// Use GET URL for the reader
+	getURL := c.url(bucket, key, "GET(range)")
+
+	return &gcsReaderAt{
+		client:   httpClient,
+		url:      getURL,
+		size:     size,
+		maxBytes: maxBytes,
+		ctx:      ctx,
+	}, size, nil
+}
+
 // DeleteFile removes a file from a GCS bucket
 func (c *GcsStorage) DeleteFile(ctx context.Context, bucket, key string) error {
 	httpClient, err := c.httpClient()

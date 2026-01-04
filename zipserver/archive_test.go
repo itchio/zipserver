@@ -690,6 +690,10 @@ func (m *mockFailingStorage) DeleteFile(_ context.Context, _, _ string) error {
 	return nil
 }
 
+func (m *mockFailingStorage) GetReaderAt(_ context.Context, _, _ string, _ uint64) (ReaderAtCloser, int64, error) {
+	return nil, 0, errors.New("not implemented")
+}
+
 type mockFailingReadCloser struct {
 	t    *testing.T
 	path string

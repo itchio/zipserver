@@ -60,9 +60,10 @@ var (
 	deleteTarget = deleteCmd.Flag("target", "Target storage name").Required().String()
 
 	// List command
-	listCmd = app.Command("list", "List files in a zip archive")
-	listKey = listCmd.Flag("key", "Storage key of the zip file").String()
-	listURL = listCmd.Flag("url", "URL of the zip file").String()
+	listCmd  = app.Command("list", "List files in a zip archive")
+	listKey  = listCmd.Flag("key", "Storage key of the zip file").String()
+	listURL  = listCmd.Flag("url", "URL of the zip file").String()
+	listFile = listCmd.Flag("file", "Local path to zip file").String()
 
 	// Slurp command
 	slurpCmd                = app.Command("slurp", "Download URL and store in storage")
@@ -260,18 +261,29 @@ func runDelete(config *zipserver.Config) {
 }
 
 func runList(config *zipserver.Config) {
-	if *listKey == "" && *listURL == "" {
-		log.Fatal("Either --key or --url must be specified")
+	count := 0
+	if *listKey != "" {
+		count++
 	}
-	if *listKey != "" && *listURL != "" {
-		log.Fatal("Only one of --key or --url can be specified")
+	if *listURL != "" {
+		count++
+	}
+	if *listFile != "" {
+		count++
+	}
+	if count == 0 {
+		log.Fatal("One of --key, --url, or --file must be specified")
+	}
+	if count > 1 {
+		log.Fatal("Only one of --key, --url, or --file can be specified")
 	}
 
 	ops := zipserver.NewOperations(config)
 
 	params := zipserver.ListParams{
-		Key: *listKey,
-		URL: *listURL,
+		Key:  *listKey,
+		URL:  *listURL,
+		File: *listFile,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.FileGetTimeout))
