@@ -27,7 +27,7 @@ More config settings can be found in `zipserver/config.go`.
 
 ## Usage
 
-Zipserver can run as an HTTP server or execute operations directly via CLI commands. All CLI commands output JSON.
+Zipserver can run as an HTTP server or execute operations directly via CLI commands. Operational commands output JSON; `server`, `testzip`, `dump`, and `version` print human-readable output.
 
 ```bash
 zipserver --help              # Show all commands
@@ -36,17 +36,17 @@ zipserver <command> --help    # Show help for a specific command
 
 ### Commands
 
-| Command | Description |
-|---------|-------------|
-| `server` | Start HTTP server (default) |
-| `extract` | Extract a zip file to storage |
-| `copy` | Copy a file to target storage |
-| `delete` | Delete files from storage |
-| `list` | List files in a zip archive |
-| `slurp` | Download a URL and store it |
-| `serve` | Serve a local zip file via HTTP |
-| `dump` | Dump parsed config and exit |
-| `version` | Print version information |
+| Command | Description | Storage |
+|---------|-------------|---------|
+| `server` | Start HTTP server (default) | n/a |
+| `extract` | Extract a zip file to storage | Source read, optional target write |
+| `copy` | Copy a file to target storage | Source read, target write |
+| `delete` | Delete files from storage | Target write |
+| `list` | List files in a zip archive | Source read (or URL) |
+| `slurp` | Download a URL and store it | Source write |
+| `testzip` | Extract and serve a local zip file via HTTP for debugging | local only |
+| `dump` | Dump parsed config and exit | n/a |
+| `version` | Print version information | n/a |
 
 ## HTTP Server
 
@@ -71,11 +71,21 @@ zipserver extract --file ./local.zip --prefix extracted/
 # With limits
 zipserver extract --key zips/my_file.zip --prefix extracted/ \
   --max-file-size 10485760 --max-num-files 100
+
+# Override extraction threads (global flag)
+zipserver --threads 8 extract --key zips/my_file.zip --prefix extracted/
+
+# With a target storage and file filter
+zipserver extract --key zips/my_file.zip --prefix extracted/ \
+  --target s3backup --filter "assets/**/*.png"
 ```
 
 **HTTP API:**
 ```bash
 curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted"
+
+# With a target storage and file filter
+curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&target=s3backup&filter=assets/**/*.png"
 ```
 
 ## Copy
@@ -142,17 +152,17 @@ zipserver slurp --url https://example.com/file.zip --key uploads/file.zip
 curl "http://localhost:8090/slurp?url=https://example.com/file.zip&key=uploads/file.zip"
 ```
 
-## Serve Local Zip
+## Testzip (Local)
 
-Serve a local zip file via HTTP for testing:
+Extract and serve a local zip file via HTTP for debugging:
 
 ```bash
-zipserver serve ./my_file.zip
+zipserver testzip ./my_file.zip
 ```
 
 ## Storage Targets
 
-You can configure additional storage targets (S3, GCS) for copy and delete operations:
+The top-level storage settings in `zipserver.json` (for example `PrivateKeyPath`, `ClientEmail`, `Bucket`) define the primary/source storage used for reads and default writes. You can also configure additional storage targets (S3 only; GCS targets are not supported yet) for `copy`, `delete`, and `extract` operations. When a target is specified (for example `--target s3backup` or `target=s3backup`), reads still come from the primary/source storage and writes go to the target bucket. Targets marked `Readonly` cannot be written to.
 
 ```json
 {
