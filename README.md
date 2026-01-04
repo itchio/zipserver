@@ -94,6 +94,10 @@ zipserver --threads 8 extract --key zips/my_file.zip --prefix extracted/
 # With a target storage and file filter
 zipserver extract --key zips/my_file.zip --prefix extracted/ \
   --target s3backup --filter "assets/**/*.png"
+
+# Extract specific files by exact path
+zipserver extract --key zips/my_file.zip --prefix extracted/ \
+  --only-file "readme.txt" --only-file "images/logo.png"
 ```
 
 **HTTP API:**
@@ -102,7 +106,12 @@ curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted"
 
 # With a target storage and file filter
 curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&target=s3backup&filter=assets/**/*.png"
+
+# Extract specific files by exact path
+curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&only_files[]=readme.txt&only_files[]=images/logo.png"
 ```
+
+Note: `--filter` (glob pattern) and `--only-file` (exact paths) are mutually exclusive.
 
 ## Copy
 
@@ -188,6 +197,10 @@ Extract and serve a local zip file via HTTP for debugging:
 
 ```bash
 zipserver testzip ./my_file.zip
+
+# With filtering
+zipserver testzip ./my_file.zip --filter "*.png"
+zipserver testzip ./my_file.zip --only-file "readme.txt"
 ```
 
 ## Storage Targets
