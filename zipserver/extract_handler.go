@@ -123,7 +123,10 @@ func loadLimits(params url.Values, config *Config) (*ExtractLimits, error) {
 }
 
 func extractHandler(w http.ResponseWriter, r *http.Request) error {
-	params := r.URL.Query()
+	if err := r.ParseForm(); err != nil {
+		return fmt.Errorf("failed to parse form: %w", err)
+	}
+	params := r.Form
 	key, err := getParam(params, "key")
 	if err != nil {
 		return err

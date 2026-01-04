@@ -135,7 +135,10 @@ func notifyError(callbackURL string, err error) error {
 // The copy handler will asynchronously copy a file from primary storage to the
 // storage specified by target
 func copyHandler(w http.ResponseWriter, r *http.Request) error {
-	params := r.URL.Query()
+	if err := r.ParseForm(); err != nil {
+		return fmt.Errorf("failed to parse form: %w", err)
+	}
+	params := r.Form
 	key, err := getParam(params, "key")
 	if err != nil {
 		return err

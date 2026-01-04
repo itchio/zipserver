@@ -162,7 +162,10 @@ func listHandler(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.FileGetTimeout))
 	defer cancel()
 
-	params := r.URL.Query()
+	if err := r.ParseForm(); err != nil {
+		return fmt.Errorf("failed to parse form: %w", err)
+	}
+	params := r.Form
 
 	localConfig := *globalConfig
 	if maxZipSizeStr := params.Get("maxInputZipSize"); maxZipSizeStr != "" {
