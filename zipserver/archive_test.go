@@ -409,6 +409,31 @@ func Test_ExtractInMemory(t *testing.T) {
 	})
 }
 
+func Test_ExtractEmptyZip(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	assert.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	prefix := "zipserver_test/empty_zip_test"
+	zipPath := "empty_test.zip"
+
+	// Create an empty zip file (no entries)
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	err = zw.Close()
+	assert.NoError(t, err)
+
+	_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+	assert.NoError(t, err)
+
+	files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+	assert.NoError(t, err)
+	assert.Len(t, files, 0)
+}
+
 func Test_ExtractRejectsUnderreportedSize(t *testing.T) {
 	config := emptyConfig()
 	ctx := context.Background()
