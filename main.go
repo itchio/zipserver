@@ -72,9 +72,9 @@ var (
 	slurpACL                = slurpCmd.Flag("acl", "ACL for the uploaded file").String()
 	slurpContentDisposition = slurpCmd.Flag("content-disposition", "Content disposition header").String()
 
-	// Serve command (serves a local zip file via HTTP)
-	serveCmd  = app.Command("serve", "Serve a local zip file via HTTP")
-	serveFile = serveCmd.Arg("file", "Path to zip file").Required().String()
+	// Testzip command (serves a local zip file via HTTP for debugging)
+	testzipCmd  = app.Command("testzip", "Extract and serve a local zip file via HTTP for debugging")
+	testzipFile = testzipCmd.Arg("file", "Path to zip file").Required().String()
 
 	// Dump command
 	dumpCmd = app.Command("dump", "Dump parsed config and exit")
@@ -134,8 +134,8 @@ func main() {
 		runList(config)
 	case slurpCmd.FullCommand():
 		runSlurp(config)
-	case serveCmd.FullCommand():
-		runServe(config)
+	case testzipCmd.FullCommand():
+		runTestzip(config)
 	case dumpCmd.FullCommand():
 		fmt.Println(config)
 	}
@@ -301,6 +301,6 @@ func runSlurp(config *zipserver.Config) {
 	}{true})
 }
 
-func runServe(config *zipserver.Config) {
-	must(zipserver.ServeZip(config, *serveFile))
+func runTestzip(config *zipserver.Config) {
+	must(zipserver.ServeZip(config, *testzipFile))
 }

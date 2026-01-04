@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 	"time"
 )
@@ -100,15 +101,18 @@ func ServeZip(config *Config, serve string) error {
 	archiver := &ArchiveExtractor{Storage: storage, Config: config}
 
 	prefix := "extracted"
-	_, err = archiver.ExtractZip(ctx, key, prefix, DefaultExtractLimits(config))
+	extractedFiles, err := archiver.ExtractZip(ctx, key, prefix, DefaultExtractLimits(config))
 	if err != nil {
 		return err
 	}
 
+	// ExtractZip prepends config.ExtractPrefix to the prefix
+	fullPrefix := path.Join(config.ExtractPrefix, prefix)
+
 	handler := &memoryHttpHandler{
 		storage:        storage,
 		bucket:         config.Bucket,
-		prefix:         prefix,
+		prefix:         fullPrefix,
 		fileGetTimeout: time.Duration(config.FileGetTimeout),
 	}
 
@@ -116,6 +120,24 @@ func ServeZip(config *Config, serve string) error {
 		Addr:    "localhost:8091",
 		Handler: handler,
 	}
-	log.Printf("Listening on %s...", s.Addr)
+
+	// Find the index.html with the shortest path
+	var shortestIndex string
+	for _, f := range extractedFiles {
+		if strings.HasSuffix(f.Key, "/index.html") {
+			if shortestIndex == "" || len(f.Key) < len(shortestIndex) {
+				shortestIndex = f.Key
+			}
+		}
+	}
+
+	log.Printf("Listening on http://%s/", s.Addr)
+
+	if shortestIndex != "" {
+		urlPath := strings.TrimPrefix(shortestIndex, fullPrefix)
+		urlPath = strings.TrimPrefix(urlPath, "/")
+		log.Printf("Found index: http://%s/%s", s.Addr, urlPath)
+	}
+
 	return s.ListenAndServe()
 }
