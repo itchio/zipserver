@@ -27,7 +27,7 @@ More config settings can be found in `zipserver/config.go`.
 
 ## Limits
 
-All limits are configured in `zipserver.json` using the names below. For `extract` and `list`, you can override limits per request via HTTP query parameters. CLI overrides are available for `extract` via flags, and `--threads` can override `ExtractionThreads`. A value of `0` means "unbounded" for all limits except `ExtractionThreads` (which is forced to at least 1).
+All limits are configured in `zipserver.json` using the names below. For `extract` and `list`, you can override limits per request via HTTP query parameters. CLI overrides are available for `extract` via flags, and `--threads` can override `ExtractionThreads`. A value of `0` means "unbounded" for all limits except `ExtractionThreads` (which uses `GOMAXPROCS`, and is forced to at least 1).
 
 | Config field | Applies to | Description | Default |
 | --- | --- | --- | --- |

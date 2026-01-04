@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -305,7 +306,10 @@ func (a *ArchiveExtractor) sendZipExtracted(
 	results := make(chan UploadFileResult)
 	threads := limits.ExtractionThreads
 	if threads < 1 {
-		threads = 1
+		threads = runtime.GOMAXPROCS(0)
+		if threads < 1 {
+			threads = 1
+		}
 	}
 
 	done := make(chan struct{}, threads)
