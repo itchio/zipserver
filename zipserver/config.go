@@ -158,6 +158,11 @@ type Config struct {
 
 	// Places that can be written to
 	StorageTargets []StorageConfig `json:",omitempty"`
+
+	// Version info (set at runtime, not from config file)
+	Version   string `json:"-"`
+	CommitSHA string `json:"-"`
+	BuildTime string `json:"-"`
 }
 
 // GetStorageTargetByName returns the storage target with the given name from the config.

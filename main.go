@@ -151,6 +151,9 @@ func main() {
 }
 
 func runServer(config *zipserver.Config) {
+	config.Version = Version
+	config.CommitSHA = CommitSHA
+	config.BuildTime = BuildTime
 	err := zipserver.StartZipServer(*serverListen, config)
 	must(err)
 }

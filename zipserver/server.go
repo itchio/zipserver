@@ -80,22 +80,38 @@ func writeJSONError(w http.ResponseWriter, kind string, err error) error {
 	}{kind, err.Error()})
 }
 
+func versionHandler(w http.ResponseWriter, r *http.Request) error {
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "zipserver %s\n", globalConfig.Version)
+	fmt.Fprintf(w, "  commit: %s\n", globalConfig.CommitSHA)
+	fmt.Fprintf(w, "  built:  %s\n", globalConfig.BuildTime)
+	return nil
+}
+
 func statusHandler(w http.ResponseWriter, r *http.Request) error {
 	copyKeys := copyLockTable.GetLocks()
 	extractKeys := extractLockTable.GetLocks()
+	slurpKeys := slurpLockTable.GetLocks()
+	deleteKeys := deleteLockTable.GetLocks()
 
 	return writeJSONMessage(w, struct {
 		CopyLocks    []KeyInfo `json:"copy_locks"`
 		ExtractLocks []KeyInfo `json:"extract_locks"`
+		SlurpLocks   []KeyInfo `json:"slurp_locks"`
+		DeleteLocks  []KeyInfo `json:"delete_locks"`
 	}{
 		CopyLocks:    copyKeys,
 		ExtractLocks: extractKeys,
+		SlurpLocks:   slurpKeys,
+		DeleteLocks:  deleteKeys,
 	})
 }
 
 // StartZipServer starts listening for extract and slurp requests
 func StartZipServer(listenTo string, _config *Config) error {
 	globalConfig = _config
+
+	http.Handle("/", wrapErrors(versionHandler))
 
 	// Extract a .zip file (downloaded from GCS), stores each
 	// individual file on GCS in a given bucket/prefix
