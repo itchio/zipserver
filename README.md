@@ -50,25 +50,27 @@ zipserver <command> --help    # Show help for a specific command
 
 ### Commands
 
-| Command | Description | Storage |
-|---------|-------------|---------|
-| `server` | Start HTTP server (default) | n/a |
-| `extract` | Extract a zip file to storage | Source read, optional target write |
-| `copy` | Copy a file to target storage | Source read, target write |
-| `delete` | Delete files from storage | Target write |
-| `list` | List files in a zip archive | Source read, URL, or local file |
-| `slurp` | Download a URL and store it | Source write, or optional target write |
-| `testzip` | Extract and serve a local zip file via HTTP for debugging | local only |
-| `dump` | Dump parsed config and exit | n/a |
-| `version` | Print version information | n/a |
+| Command | Description | Storage | HTTP Endpoint |
+|---------|-------------|---------|---------------|
+| `server` | Start HTTP server (default) | n/a | |
+| `extract` | Extract a zip file to storage | Source read, optional target write | `/extract` |
+| `copy` | Copy a file to target storage | Source read, target write | `/copy` |
+| `delete` | Delete files from storage | Target write | `/delete` |
+| `list` | List files in a zip archive | Source read, URL, or local file | `/list` |
+| `slurp` | Download a URL and store it | Source write, or optional target write | `/slurp` |
+| `testzip` | Extract and serve a local zip file via HTTP for debugging | local only | |
+| `dump` | Dump parsed config and exit | n/a | |
+| `version` | Print version information | n/a | |
 
 ## HTTP Server
 
 Start the server:
 
 ```bash
-zipserver server --listen 0.0.0.0:8090
+zipserver server --listen 127.0.0.1:8090
 ```
+
+**Warning:** This HTTP server exposes unauthenticated operations on your storage bucket. It's recommended to avoid public network interfaces.
 
 ## Extract
 
