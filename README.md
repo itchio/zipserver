@@ -238,6 +238,66 @@ Example target entries:
 }
 ```
 
+## Callbacks (Async Mode)
+
+Some HTTP handlers support callbacks to notify your application when long-running operations complete. This allows you to immediately return a response to the client while the operation continues in the background.
+
+### Supported Handlers
+
+| Endpoint | Parameter | Sync Mode Available |
+|----------|-----------|---------------------|
+| `/extract` | `async` | Yes (omit `async` for sync) |
+| `/slurp` | `async` | Yes (omit `async` for sync) |
+| `/copy` | `callback` | No (always async) |
+| `/delete` | `callback` | No (always async) |
+
+### How It Works
+
+1. Provide a callback URL via the `async` or `callback` parameter
+2. The server immediately returns `{"Processing": true, "Async": true}`
+3. The operation runs in the background
+4. On completion, the server POSTs the result to your callback URL
+
+The callback is sent as a POST request with `Content-Type: application/x-www-form-urlencoded`.
+
+### Callback Response Fields
+
+**On success**, callbacks include `Success=true` plus operation-specific fields:
+
+| Endpoint | Success Fields |
+|----------|----------------|
+| `/extract` | `ExtractedFiles[N][Key]`, `ExtractedFiles[N][Size]` for each file |
+| `/slurp` | (none beyond `Success=true`) |
+| `/copy` | `Key`, `Duration`, `Size`, `Md5` |
+| `/delete` | `TotalKeys`, `DeletedKeys`, `Errors` (JSON array if any) |
+
+**On error**, callbacks include:
+
+| Endpoint | Error Fields |
+|----------|--------------|
+| `/extract` | `Type=ExtractError`, `Error=<message>` |
+| `/slurp` | `Type=SlurpError`, `Error=<message>` |
+| `/copy` | `Success=false`, `Error=<message>` |
+| `/delete` | `Success=false`, `Error=<message>` |
+
+### Examples
+
+**Extract with callback:**
+```bash
+curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&async=http://example.com/extract-done"
+```
+
+**Slurp with callback:**
+```bash
+curl "http://localhost:8090/slurp?url=https://example.com/file.zip&key=uploads/file.zip&async=http://example.com/slurp-done"
+```
+
+### Notes
+
+- The callback timeout is configurable via `AsyncNotificationTimeout` in the config
+- If your callback URL returns a non-200 status, the error is logged but the operation result is not retried
+- Operations that are already in progress for the same key return `{"Processing": true}` without the `Async` field
+
 ## GCS Authentication and Permissions
 
 The key file in your config should be the PEM-encoded private key for a service
