@@ -74,8 +74,12 @@ var (
 	slurpContentDisposition = slurpCmd.Flag("content-disposition", "Content disposition header").String()
 
 	// Testzip command (serves a local zip file via HTTP for debugging)
-	testzipCmd  = app.Command("testzip", "Extract and serve a local zip file via HTTP for debugging")
-	testzipFile = testzipCmd.Arg("file", "Path to zip file").Required().String()
+	testzipCmd          = app.Command("testzip", "Extract and serve a local zip file via HTTP for debugging")
+	testzipFile         = testzipCmd.Arg("file", "Path to zip file").Required().String()
+	testzipMaxFileSize  = testzipCmd.Flag("max-file-size", "Maximum size per file in bytes").Uint64()
+	testzipMaxTotalSize = testzipCmd.Flag("max-total-size", "Maximum total extracted size in bytes").Uint64()
+	testzipMaxNumFiles  = testzipCmd.Flag("max-num-files", "Maximum number of files").Int()
+	testzipFilter       = testzipCmd.Flag("filter", "Glob pattern to filter extracted files").String()
 
 	// Dump command
 	dumpCmd = app.Command("dump", "Dump parsed config and exit")
@@ -306,5 +310,18 @@ func runSlurp(config *zipserver.Config) {
 }
 
 func runTestzip(config *zipserver.Config) {
-	must(zipserver.ServeZip(config, *testzipFile))
+	limits := zipserver.DefaultExtractLimits(config)
+	if *testzipMaxFileSize > 0 {
+		limits.MaxFileSize = *testzipMaxFileSize
+	}
+	if *testzipMaxTotalSize > 0 {
+		limits.MaxTotalSize = *testzipMaxTotalSize
+	}
+	if *testzipMaxNumFiles > 0 {
+		limits.MaxNumFiles = *testzipMaxNumFiles
+	}
+	if *testzipFilter != "" {
+		limits.IncludeGlob = *testzipFilter
+	}
+	must(zipserver.ServeZip(config, *testzipFile, limits))
 }

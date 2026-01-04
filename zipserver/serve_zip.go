@@ -70,7 +70,7 @@ func (mhh *memoryHttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 // ServeZip takes the path to zip file in the local fs and serves
 // it as http
-func ServeZip(config *Config, serve string) error {
+func ServeZip(config *Config, serve string, limits *ExtractLimits) error {
 	config.Bucket = "local"
 
 	storage, err := NewMemStorage()
@@ -101,7 +101,7 @@ func ServeZip(config *Config, serve string) error {
 	archiver := &ArchiveExtractor{Storage: storage, Config: config}
 
 	prefix := "extracted"
-	extractedFiles, err := archiver.ExtractZip(ctx, key, prefix, DefaultExtractLimits(config))
+	extractedFiles, err := archiver.ExtractZip(ctx, key, prefix, limits)
 	if err != nil {
 		return err
 	}
