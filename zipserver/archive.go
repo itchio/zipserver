@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -96,18 +98,30 @@ func fetchZipFilename(bucket, key string) string {
 	return bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
 }
 
-func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string) (string, error) {
+func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string, maxZipSize uint64) (string, error) {
 	os.MkdirAll(tmpDir, os.ModeDir|0777)
 
 	fname := fetchZipFilename(a.Bucket, key)
 	fname = path.Join(tmpDir, fname)
 
-	src, _, err := a.Storage.GetFile(ctx, a.Bucket, key)
+	src, headers, err := a.Storage.GetFile(ctx, a.Bucket, key)
 	if err != nil {
 		return "", err
 	}
 
 	defer src.Close()
+
+	if headers != nil && maxZipSize > 0 {
+		if contentLength := headers.Get("Content-Length"); contentLength != "" {
+			size, err := strconv.ParseInt(contentLength, 10, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid Content-Length: %w", err)
+			}
+			if err := checkContentLength(maxZipSize, size); err != nil {
+				return "", err
+			}
+		}
+	}
 
 	dest, err := os.Create(fname)
 	if err != nil {
@@ -123,8 +137,16 @@ func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string) (string, er
 		}
 	}()
 
-	_, err = io.Copy(dest, src)
+	if maxZipSize > 0 {
+		var bytesRead uint64
+		_, err = io.Copy(dest, limitedReader(src, maxZipSize, &bytesRead))
+	} else {
+		_, err = io.Copy(dest, src)
+	}
 	if err != nil {
+		if errors.Is(err, ErrLimitExceeded) {
+			return "", fmt.Errorf("zip too large (max %d bytes)", maxZipSize)
+		}
 		return "", err
 	}
 
@@ -232,8 +254,10 @@ func (a *ArchiveExtractor) sendZipExtracted(
 	defer zipReader.Close()
 
 	if len(zipReader.File) > limits.MaxNumFiles {
-		return nil, fmt.Errorf("Too many files in zip (%v > %v)",
-			len(zipReader.File), limits.MaxNumFiles)
+		if limits.MaxNumFiles > 0 {
+			return nil, fmt.Errorf("Too many files in zip (%v > %v)",
+				len(zipReader.File), limits.MaxNumFiles)
+		}
 	}
 
 	extractedFiles := []ExtractedFile{}
@@ -260,17 +284,17 @@ func (a *ArchiveExtractor) sendZipExtracted(
 			}
 		}
 
-		if len(file.Name) > limits.MaxFileNameLength {
+		if limits.MaxFileNameLength > 0 && len(file.Name) > limits.MaxFileNameLength {
 			return nil, fmt.Errorf("Zip contains file paths that are too long")
 		}
 
-		if file.UncompressedSize64 > limits.MaxFileSize {
+		if limits.MaxFileSize > 0 && file.UncompressedSize64 > limits.MaxFileSize {
 			return nil, fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
 		}
 
 		byteCount += file.UncompressedSize64
 
-		if byteCount > limits.MaxTotalSize {
+		if limits.MaxTotalSize > 0 && byteCount > limits.MaxTotalSize {
 			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
 		}
 
@@ -279,17 +303,22 @@ func (a *ArchiveExtractor) sendZipExtracted(
 
 	tasks := make(chan UploadFileTask)
 	results := make(chan UploadFileResult)
-	done := make(chan struct{}, limits.ExtractionThreads)
+	threads := limits.ExtractionThreads
+	if threads < 1 {
+		threads = 1
+	}
+
+	done := make(chan struct{}, threads)
 
 	// Context can be canceled by caller or when an individual task fails.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for i := 0; i < limits.ExtractionThreads; i++ {
+	for i := 0; i < threads; i++ {
 		go uploadWorker(ctx, a, tasks, results, done)
 	}
 
-	activeWorkers := limits.ExtractionThreads
+	activeWorkers := threads
 
 	go func() {
 		defer func() { close(tasks) }()
@@ -408,6 +437,9 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 
 	putResult, err := a.getDestinationStorage().PutFile(ctx, a.getDestinationBucket(), resource.key, limited, resource.ToPutOptions())
 	if err != nil {
+		if errors.Is(err, ErrLimitExceeded) {
+			return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size (max %d bytes)", file.UncompressedSize64), Key: resource.key}
+		}
 		return UploadFileResult{Error: err, Key: resource.key}
 	}
 
@@ -428,7 +460,7 @@ func (a *ArchiveExtractor) ExtractZip(
 	key, prefix string,
 	limits *ExtractLimits,
 ) ([]ExtractedFile, error) {
-	fname, err := a.fetchZip(ctx, key)
+	fname, err := a.fetchZip(ctx, key, limits.MaxInputZipSize)
 	if err != nil {
 		return nil, err
 	}
@@ -444,6 +476,15 @@ func (a *ArchiveExtractor) UploadZipFromFile(
 	fname, prefix string,
 	limits *ExtractLimits,
 ) ([]ExtractedFile, error) {
+	if limits.MaxInputZipSize > 0 {
+		info, err := os.Stat(fname)
+		if err != nil {
+			return nil, err
+		}
+		if info.Size() > int64(limits.MaxInputZipSize) {
+			return nil, fmt.Errorf("zip too large (max %d bytes)", limits.MaxInputZipSize)
+		}
+	}
 	prefix = path.Join("_zipserver", prefix)
 	return a.sendZipExtracted(ctx, prefix, fname, limits)
 }

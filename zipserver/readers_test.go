@@ -44,3 +44,18 @@ func Test_limitedReader(t *testing.T) {
 	_, err = io.ReadAll(lr)
 	assert.Error(t, err)
 }
+
+func Test_limitedReaderWithCancel(t *testing.T) {
+	s := "Hello, world"
+
+	sr := bytes.NewReader([]byte(s))
+	var totalBytes uint64
+	called := false
+	lr := limitedReaderWithCancel(sr, 5, &totalBytes, func() {
+		called = true
+	})
+
+	_, err := io.ReadAll(lr)
+	assert.Error(t, err)
+	assert.True(t, called)
+}

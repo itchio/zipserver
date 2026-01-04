@@ -20,6 +20,7 @@ type ExtractLimits struct {
 	MaxFileNameLength int
 	ExtractionThreads int
 	IncludeGlob       string // Glob pattern for file inclusion (empty = all files)
+	MaxInputZipSize   uint64
 }
 
 type StorageType int
@@ -146,6 +147,8 @@ type Config struct {
 	MaxNumFiles       int
 	MaxFileNameLength int
 	ExtractionThreads int
+	MaxInputZipSize   uint64
+	MaxListFiles      int
 
 	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
 	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object
@@ -171,8 +174,10 @@ var defaultConfig = Config{
 	MaxFileSize:       1024 * 1024 * 200,
 	MaxTotalSize:      1024 * 1024 * 500,
 	MaxNumFiles:       100,
-	MaxFileNameLength: 80,
+	MaxFileNameLength: 255,
 	ExtractionThreads: 4,
+	MaxInputZipSize:   1024 * 1024 * 100,
+	MaxListFiles:      50000,
 
 	JobTimeout:               Duration(5 * time.Minute),
 	FileGetTimeout:           Duration(1 * time.Minute),
@@ -258,5 +263,6 @@ func DefaultExtractLimits(config *Config) *ExtractLimits {
 		MaxNumFiles:       config.MaxNumFiles,
 		MaxFileNameLength: config.MaxFileNameLength,
 		ExtractionThreads: config.ExtractionThreads,
+		MaxInputZipSize:   config.MaxInputZipSize,
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -33,13 +34,31 @@ func (o *Operations) listFromBucket(ctx context.Context, key string) ListResult 
 		return ListResult{Err: err}
 	}
 
-	reader, _, err := storage.GetFile(ctx, o.config.Bucket, key)
+	reader, headers, err := storage.GetFile(ctx, o.config.Bucket, key)
 	if err != nil {
 		return ListResult{Err: err}
 	}
 	defer reader.Close()
 
-	body, err := io.ReadAll(reader)
+	if headers != nil && o.config.MaxInputZipSize > 0 {
+		if contentLength := headers.Get("Content-Length"); contentLength != "" {
+			size, err := strconv.ParseInt(contentLength, 10, 64)
+			if err != nil {
+				return ListResult{Err: fmt.Errorf("invalid Content-Length: %w", err)}
+			}
+			if err := checkContentLength(o.config.MaxInputZipSize, size); err != nil {
+				return ListResult{Err: err}
+			}
+		}
+	}
+
+	var body []byte
+	if o.config.MaxInputZipSize > 0 {
+		var bytesRead uint64
+		body, err = io.ReadAll(limitedReader(reader, o.config.MaxInputZipSize, &bytesRead))
+	} else {
+		body, err = io.ReadAll(reader)
+	}
 	if err != nil {
 		return ListResult{Err: err}
 	}
@@ -48,7 +67,10 @@ func (o *Operations) listFromBucket(ctx context.Context, key string) ListResult 
 }
 
 func (o *Operations) listFromURL(ctx context.Context, url string) ListResult {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	reqCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return ListResult{Err: err}
 	}
@@ -59,7 +81,20 @@ func (o *Operations) listFromURL(ctx context.Context, url string) ListResult {
 	}
 	defer response.Body.Close()
 
-	body, err := io.ReadAll(response.Body)
+	if err := checkContentLength(o.config.MaxInputZipSize, response.ContentLength); err != nil {
+		return ListResult{Err: err}
+	}
+
+	var body []byte
+	if o.config.MaxInputZipSize > 0 {
+		var bytesRead uint64
+		body, err = io.ReadAll(limitedReaderWithCancel(response.Body, o.config.MaxInputZipSize, &bytesRead, func() {
+			cancel()
+			_ = response.Body.Close()
+		}))
+	} else {
+		body, err = io.ReadAll(response.Body)
+	}
 	if err != nil {
 		return ListResult{Err: err}
 	}
@@ -73,6 +108,10 @@ func (o *Operations) listZipBytes(body []byte) ListResult {
 		return ListResult{Err: err}
 	}
 
+	if o.config.MaxListFiles > 0 && len(zipFile.File) > o.config.MaxListFiles {
+		return ListResult{Err: fmt.Errorf("zip too many files (max %d)", o.config.MaxListFiles)}
+	}
+
 	var files []fileTuple
 	for _, file := range zipFile.File {
 		files = append(files, fileTuple{
@@ -84,13 +123,32 @@ func (o *Operations) listZipBytes(body []byte) ListResult {
 	return ListResult{Files: files}
 }
 
+func checkContentLength(maxBytes uint64, contentLength int64) error {
+	if maxBytes == 0 || contentLength <= 0 {
+		return nil
+	}
+	if uint64(contentLength) > maxBytes {
+		return fmt.Errorf("zip too large (max %d bytes)", maxBytes)
+	}
+	return nil
+}
+
 func listHandler(w http.ResponseWriter, r *http.Request) error {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.FileGetTimeout))
 	defer cancel()
 
 	params := r.URL.Query()
 
-	ops := NewOperations(globalConfig)
+	localConfig := *globalConfig
+	if maxZipSizeStr := params.Get("maxInputZipSize"); maxZipSizeStr != "" {
+		maxZipSize, err := strconv.ParseUint(maxZipSizeStr, 10, 64)
+		if err != nil {
+			return err
+		}
+		localConfig.MaxInputZipSize = maxZipSize
+	}
+
+	ops := NewOperations(&localConfig)
 	listParams := ListParams{}
 
 	key, err := getParam(params, "key")

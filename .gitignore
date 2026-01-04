@@ -1,4 +1,7 @@
 bin/
-test_files/
+test_files/*
+!test_files/zip_lie_underreported_size.zip
+!test_files/zip_lie_overreported_size.zip
+!test_files/zip_lie_bad_crc.zip
 zipserver.json
 *.pem

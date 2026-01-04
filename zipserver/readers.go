@@ -1,11 +1,26 @@
 package zipserver
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"time"
 )
+
+var ErrLimitExceeded = errors.New("limit exceeded")
+
+type LimitExceededError struct {
+	MaxBytes uint64
+}
+
+func (e *LimitExceededError) Error() string {
+	return fmt.Sprintf("file too large (max %d bytes)", e.MaxBytes)
+}
+
+func (e *LimitExceededError) Unwrap() error {
+	return ErrLimitExceeded
+}
 
 type readerClosure func(p []byte) (int, error)
 
@@ -30,7 +45,25 @@ func limitedReader(reader io.Reader, maxBytes uint64, totalBytes *uint64) reader
 		*totalBytes += uint64(bytesRead)
 
 		if *totalBytes > maxBytes {
-			return bytesRead, fmt.Errorf("File too large (max %d bytes)", maxBytes)
+			return bytesRead, &LimitExceededError{MaxBytes: maxBytes}
+		}
+
+		return bytesRead, err
+	}
+}
+
+// limitedReaderWithCancel behaves like limitedReader but invokes onLimit when the
+// limit is exceeded. Use this to terminate upstream connections early.
+func limitedReaderWithCancel(reader io.Reader, maxBytes uint64, totalBytes *uint64, onLimit func()) readerClosure {
+	return func(p []byte) (int, error) {
+		bytesRead, err := reader.Read(p)
+		*totalBytes += uint64(bytesRead)
+
+		if *totalBytes > maxBytes {
+			if onLimit != nil {
+				onLimit()
+			}
+			return bytesRead, &LimitExceededError{MaxBytes: maxBytes}
 		}
 
 		return bytesRead, err

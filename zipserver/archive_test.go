@@ -41,6 +41,14 @@ func emptyConfig() *Config {
 	}
 }
 
+func readTestZip(t *testing.T, name string) []byte {
+	t.Helper()
+	path := filepath.Join("..", "test_files", name)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return data
+}
+
 func Test_ExtractOnGCS(t *testing.T) {
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
 		ctx := context.Background()
@@ -401,6 +409,139 @@ func Test_ExtractInMemory(t *testing.T) {
 	})
 }
 
+func Test_ExtractRejectsUnderreportedSize(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	require.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	zipPath := "zipserver_test/lie_underreported.zip"
+
+	zipBytes := readTestZip(t, "zip_lie_underreported_size.zip")
+	_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(zipBytes), PutOptions{})
+	require.NoError(t, err)
+
+	limits := testLimits()
+	_, err = archiver.ExtractZip(ctx, zipPath, "zipserver_test/extract", limits)
+	assert.Error(t, err)
+}
+
+func Test_ExtractRejectsOverreportedSize(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	require.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	zipPath := "zipserver_test/lie_overreported.zip"
+
+	zipBytes := readTestZip(t, "zip_lie_overreported_size.zip")
+	_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(zipBytes), PutOptions{})
+	require.NoError(t, err)
+
+	limits := testLimits()
+	limits.MaxFileSize = 1024
+	_, err = archiver.ExtractZip(ctx, zipPath, "zipserver_test/extract", limits)
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "Zip contains file that is too large"))
+}
+
+func Test_ExtractRejectsBadCRC(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	require.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	zipPath := "zipserver_test/lie_bad_crc.zip"
+
+	zipBytes := readTestZip(t, "zip_lie_bad_crc.zip")
+	_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(zipBytes), PutOptions{})
+	require.NoError(t, err)
+
+	limits := testLimits()
+	_, err = archiver.ExtractZip(ctx, zipPath, "zipserver_test/extract", limits)
+	assert.Error(t, err)
+	if err != nil {
+		msg := err.Error()
+		assert.True(t, strings.Contains(msg, "checksum") || strings.Contains(msg, "corrupt input"))
+	}
+}
+
+func Test_ExtractRejectsZipBombBySizeLimits(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	require.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	zipPath := "zipserver_test/zip_bomb.zip"
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	writer, err := zw.CreateHeader(&zip.FileHeader{
+		Name:               "bomb.txt",
+		Method:             zip.Deflate,
+		UncompressedSize64: 1024 * 1024,
+	})
+	require.NoError(t, err)
+	_, err = writer.Write(bytes.Repeat([]byte("A"), 1024*1024))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+
+	_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+	require.NoError(t, err)
+
+	limits := testLimits()
+	limits.MaxFileSize = 128 * 1024
+	limits.MaxTotalSize = 128 * 1024
+
+	_, err = archiver.ExtractZip(ctx, zipPath, "zipserver_test/extract", limits)
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "too large"))
+}
+
+func Test_ExtractRejectsMaxInputZipSize(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	require.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	zipPath := "zipserver_test/max_input_zip_size.zip"
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	writer, err := zw.CreateHeader(&zip.FileHeader{
+		Name:               "small.txt",
+		Method:             zip.Deflate,
+		UncompressedSize64: 1024,
+	})
+	require.NoError(t, err)
+	_, err = writer.Write(bytes.Repeat([]byte("A"), 1024))
+	require.NoError(t, err)
+	require.NoError(t, zw.Close())
+
+	_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+	require.NoError(t, err)
+
+	limits := testLimits()
+	limits.MaxInputZipSize = 1
+
+	_, err = archiver.ExtractZip(ctx, zipPath, "zipserver_test/extract", limits)
+	assert.Error(t, err)
+	if err != nil {
+		msg := err.Error()
+		assert.True(t, strings.Contains(msg, "zip too large"))
+	}
+}
+
 func Test_GlobFiltering(t *testing.T) {
 	config := emptyConfig()
 	ctx := context.Background()
@@ -516,7 +657,7 @@ func TestFetchZipFailing(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := a.fetchZip(ctx, key)
+	_, err := a.fetchZip(ctx, key, 0)
 	assert.EqualError(t, err, "intentional failure")
 	assert.False(t, fileExists(path), "file should have been removed")
 }

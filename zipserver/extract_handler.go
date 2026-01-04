@@ -97,6 +97,13 @@ func loadLimits(params url.Values, config *Config) *ExtractLimits {
 		}
 	}
 
+	{
+		maxZipSize, err := getUint64Param(params, "maxInputZipSize")
+		if err == nil {
+			limits.MaxInputZipSize = maxZipSize
+		}
+	}
+
 	if filter := params.Get("filter"); filter != "" {
 		limits.IncludeGlob = filter
 	}
@@ -146,8 +153,8 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	if asyncURL == "" {
 		defer extractLockTable.releaseKey(lockKey)
 
-		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
-		defer cancel()
+			ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
+			defer cancel()
 
 		result := ops.Extract(ctx, extractParams)
 		if result.Err != nil {
