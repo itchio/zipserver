@@ -39,6 +39,12 @@ func init() {
 	mime.AddExtensionType(".ico", "image/x-icon")              // prevent image/vnd.microsoft.icon
 }
 
+// isIndexHtml returns true if the filename is index.html (case-insensitive)
+func isIndexHtml(filename string) bool {
+	base := path.Base(filename)
+	return strings.EqualFold(base, "index.html")
+}
+
 // ArchiveExtractor holds together the storage along with configuration values
 // (credentials, limits etc.)
 type ArchiveExtractor struct {
@@ -66,9 +72,10 @@ func (a *ArchiveExtractor) getDestinationBucket() string {
 
 // ExtractedFile represents a file extracted from a .zip into a GCS bucket
 type ExtractedFile struct {
-	Key  string
-	Size uint64
-	MD5  string
+	Key      string
+	Size     uint64
+	MD5      string
+	Injected bool `json:",omitempty"` // true if HTML footer was injected
 }
 
 // NewArchiveExtractor creates a new archiver from the given config
@@ -220,17 +227,19 @@ func shouldIncludeFileByList(fname string, onlyFiles []string) bool {
 
 // UploadFileTask contains the information needed to extract a single file from a .zip
 type UploadFileTask struct {
-	File *zip.File
-	Key  string
+	File       *zip.File
+	Key        string
+	HtmlFooter string // HTML to append if this is an index.html file
 }
 
 // UploadFileResult is successful is Error is nil - in that case, it contains the
 // GCS key the file was uploaded under, and the number of bytes written for that file.
 type UploadFileResult struct {
-	Error error
-	Key   string
-	Size  uint64
-	MD5   string
+	Error    error
+	Key      string
+	Size     uint64
+	MD5      string
+	Injected bool // true if HTML footer was injected into this file
 }
 
 func uploadWorker(
@@ -249,7 +258,7 @@ func uploadWorker(
 		startTime := time.Now()
 		timeout := time.Duration(a.Config.FilePutTimeout)
 		uploadCtx, cancel := context.WithTimeout(ctx, timeout)
-		result := a.extractAndUploadOne(uploadCtx, key, file)
+		result := a.extractAndUploadOne(uploadCtx, key, file, task.HtmlFooter)
 		cancel() // Free resources now instead of deferring till func returns
 
 		if result.Error != nil {
@@ -329,11 +338,17 @@ func (a *ArchiveExtractor) sendZipExtracted(
 			return nil, fmt.Errorf("Zip contains file paths that are too long")
 		}
 
-		if limits.MaxFileSize > 0 && file.UncompressedSize64 > limits.MaxFileSize {
+		// Calculate effective file size (including potential HTML footer)
+		effectiveSize := file.UncompressedSize64
+		if limits.HtmlFooter != "" && isIndexHtml(file.Name) {
+			effectiveSize += uint64(len(limits.HtmlFooter))
+		}
+
+		if limits.MaxFileSize > 0 && effectiveSize > limits.MaxFileSize {
 			return nil, fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
 		}
 
-		byteCount += file.UncompressedSize64
+		byteCount += effectiveSize
 
 		if limits.MaxTotalSize > 0 && byteCount > limits.MaxTotalSize {
 			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
@@ -368,7 +383,15 @@ func (a *ArchiveExtractor) sendZipExtracted(
 		defer func() { close(tasks) }()
 		for _, file := range fileList {
 			key := path.Join(prefix, file.Name)
-			task := UploadFileTask{file, key}
+			htmlFooter := ""
+			if limits.HtmlFooter != "" && isIndexHtml(file.Name) {
+				htmlFooter = limits.HtmlFooter
+			}
+			task := UploadFileTask{
+				File:       file,
+				Key:        key,
+				HtmlFooter: htmlFooter,
+			}
 			select {
 			case tasks <- task:
 			case <-ctx.Done():
@@ -392,9 +415,10 @@ func (a *ArchiveExtractor) sendZipExtracted(
 				cancel()
 			} else {
 				extractedFiles = append(extractedFiles, ExtractedFile{
-					Key:  result.Key,
-					Size: result.Size,
-					MD5:  result.MD5,
+					Key:      result.Key,
+					Size:     result.Size,
+					MD5:      result.MD5,
+					Injected: result.Injected,
 				})
 				fileCount++
 			}
@@ -418,7 +442,8 @@ func (a *ArchiveExtractor) sendZipExtracted(
 
 // sends an individual file from a zip
 // Caller should set the job timeout in ctx.
-func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, file *zip.File) UploadFileResult {
+// htmlFooter: if non-empty, append this HTML to the file content (for index.html files)
+func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, file *zip.File, htmlFooter string) UploadFileResult {
 	readerCloser, err := file.Open()
 	if err != nil {
 		return UploadFileResult{Error: err, Key: key}
@@ -479,14 +504,25 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 
 	resource.applyRewriteRules()
 
-	log.Printf("Sending: %s", resource)
+	// Calculate expected size, accounting for HTML footer if applicable
+	// Skip injection for compressed files (gzip/brotli) as we can't append to compressed streams
+	expectedSize := file.UncompressedSize64
+	injected := false
+	if htmlFooter != "" && resource.contentEncoding == "" {
+		expectedSize += uint64(len(htmlFooter))
+		reader = newAppendReader(reader, htmlFooter)
+		injected = true
+		log.Printf("Sending: %s (injected)", resource)
+	} else {
+		log.Printf("Sending: %s", resource)
+	}
 
-	limited := limitedReader(reader, file.UncompressedSize64, &resource.size)
+	limited := limitedReader(reader, expectedSize, &resource.size)
 
 	putResult, err := a.getDestinationStorage().PutFile(ctx, a.getDestinationBucket(), resource.key, limited, resource.ToPutOptions())
 	if err != nil {
 		if errors.Is(err, ErrLimitExceeded) {
-			return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size (max %d bytes)", file.UncompressedSize64), Key: resource.key}
+			return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size (max %d bytes)", expectedSize), Key: resource.key}
 		}
 		return UploadFileResult{Error: err, Key: resource.key}
 	}
@@ -494,9 +530,10 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 	globalMetrics.TotalExtractedFiles.Add(1)
 
 	return UploadFileResult{
-		Key:  resource.key,
-		Size: resource.size,
-		MD5:  putResult.MD5,
+		Key:      resource.key,
+		Size:     resource.size,
+		MD5:      putResult.MD5,
+		Injected: injected,
 	}
 }
 

@@ -100,3 +100,47 @@ func (mr *measuredReader) TransferSpeed() float64 {
 	}
 	return float64(mr.BytesRead) / mr.Duration.Seconds()
 }
+
+// appendReader wraps a reader and appends additional bytes at the end
+type appendReader struct {
+	reader     io.Reader
+	appendData []byte
+	appendPos  int
+	readerDone bool
+}
+
+func newAppendReader(reader io.Reader, appendData string) *appendReader {
+	return &appendReader{
+		reader:     reader,
+		appendData: []byte(appendData),
+	}
+}
+
+func (r *appendReader) Read(p []byte) (int, error) {
+	if !r.readerDone {
+		n, err := r.reader.Read(p)
+		if err == io.EOF {
+			r.readerDone = true
+			// Don't return EOF yet if we have data to append
+			if n > 0 {
+				return n, nil
+			}
+			// Fall through to append logic
+		} else {
+			return n, err
+		}
+	}
+
+	// Append phase: copy remaining appendData
+	if r.appendPos >= len(r.appendData) {
+		return 0, io.EOF
+	}
+
+	n := copy(p, r.appendData[r.appendPos:])
+	r.appendPos += n
+
+	if r.appendPos >= len(r.appendData) {
+		return n, io.EOF
+	}
+	return n, nil
+}

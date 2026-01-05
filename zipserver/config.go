@@ -45,6 +45,7 @@ type ExtractLimits struct {
 	IncludeGlob       string   // Glob pattern for file inclusion (empty = all files)
 	OnlyFiles         []string // Exact file paths to extract (mutually exclusive with IncludeGlob)
 	MaxInputZipSize   uint64
+	HtmlFooter        string // HTML snippet to append to index.html files
 }
 
 type StorageType int

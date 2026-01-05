@@ -130,6 +130,11 @@ func loadLimits(params url.Values, config *Config) (*ExtractLimits, error) {
 		limits.OnlyFiles = onlyFiles
 	}
 
+	htmlFooter := params.Get("html_footer")
+	if htmlFooter != "" {
+		limits.HtmlFooter = htmlFooter
+	}
+
 	return limits, nil
 }
 

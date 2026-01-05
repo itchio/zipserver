@@ -59,3 +59,70 @@ func Test_limitedReaderWithCancel(t *testing.T) {
 	assert.Error(t, err)
 	assert.True(t, called)
 }
+
+func Test_appendReader(t *testing.T) {
+	t.Run("appends data to reader", func(t *testing.T) {
+		original := bytes.NewReader([]byte("Hello"))
+		appendStr := " World"
+		reader := newAppendReader(original, appendStr)
+
+		data, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, "Hello World", string(data))
+	})
+
+	t.Run("handles empty original", func(t *testing.T) {
+		original := bytes.NewReader([]byte(""))
+		appendStr := "Only Append"
+		reader := newAppendReader(original, appendStr)
+
+		data, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, "Only Append", string(data))
+	})
+
+	t.Run("handles empty append", func(t *testing.T) {
+		original := bytes.NewReader([]byte("Original"))
+		reader := newAppendReader(original, "")
+
+		data, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, "Original", string(data))
+	})
+
+	t.Run("works with small buffer reads", func(t *testing.T) {
+		original := bytes.NewReader([]byte("ABC"))
+		appendStr := "DEF"
+		reader := newAppendReader(original, appendStr)
+
+		buf := make([]byte, 2)
+		var result []byte
+		for {
+			n, err := reader.Read(buf)
+			result = append(result, buf[:n]...)
+			if err == io.EOF {
+				break
+			}
+			assert.NoError(t, err)
+		}
+		assert.Equal(t, "ABCDEF", string(result))
+	})
+
+	t.Run("handles single byte reads", func(t *testing.T) {
+		original := bytes.NewReader([]byte("AB"))
+		appendStr := "CD"
+		reader := newAppendReader(original, appendStr)
+
+		buf := make([]byte, 1)
+		var result []byte
+		for {
+			n, err := reader.Read(buf)
+			result = append(result, buf[:n]...)
+			if err == io.EOF {
+				break
+			}
+			assert.NoError(t, err)
+		}
+		assert.Equal(t, "ABCD", string(result))
+	})
+}

@@ -835,3 +835,207 @@ func (m *mockFailingReadCloser) Read(p []byte) (int, error) {
 func (m *mockFailingReadCloser) Close() error {
 	return nil
 }
+
+func Test_HtmlFooterInjection(t *testing.T) {
+	config := emptyConfig()
+	ctx := context.Background()
+
+	storage, err := NewMemStorage()
+	assert.NoError(t, err)
+
+	archiver := &ArchiveExtractor{Storage: storage, Config: config}
+	prefix := "zipserver_test/html_footer_test"
+	zipPath := "html_footer_test.zip"
+
+	withZip := func(entries []zipEntry, cb func()) {
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		(&zipLayout{entries: entries}).Write(t, zw)
+		err := zw.Close()
+		assert.NoError(t, err)
+		_, err = storage.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+		assert.NoError(t, err)
+		cb()
+	}
+
+	t.Run("injects HTML footer into index.html", func(t *testing.T) {
+		originalContent := []byte("<html><body>Hello</body></html>")
+		footer := "<script>console.log('injected')</script>"
+
+		withZip([]zipEntry{
+			{name: "index.html", data: originalContent, expectedMimeType: "text/html; charset=utf-8"},
+			{name: "other.html", data: []byte("<html>Other</html>"), expectedMimeType: "text/html; charset=utf-8"},
+		}, func() {
+			limits := testLimits()
+			limits.HtmlFooter = footer
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+
+			// Verify index.html has injected content
+			reader, _, err := storage.GetFile(ctx, config.Bucket, prefix+"/index.html")
+			assert.NoError(t, err)
+			data, _ := io.ReadAll(reader)
+			reader.Close()
+
+			expected := string(originalContent) + footer
+			assert.Equal(t, expected, string(data))
+
+			// Verify other.html is unchanged
+			reader, _, err = storage.GetFile(ctx, config.Bucket, prefix+"/other.html")
+			assert.NoError(t, err)
+			data, _ = io.ReadAll(reader)
+			reader.Close()
+			assert.Equal(t, "<html>Other</html>", string(data))
+
+			// Verify Injected field is set correctly
+			for _, f := range files {
+				if strings.HasSuffix(f.Key, "/index.html") {
+					assert.True(t, f.Injected, "index.html should have Injected=true")
+				} else {
+					assert.False(t, f.Injected, "other.html should have Injected=false")
+				}
+			}
+		})
+	})
+
+	t.Run("case-insensitive index.html matching", func(t *testing.T) {
+		footer := "<!-- injected -->"
+
+		withZip([]zipEntry{
+			{name: "INDEX.HTML", data: []byte("upper"), expectedMimeType: "text/html; charset=utf-8"},
+			{name: "subdir/Index.Html", data: []byte("mixed"), expectedMimeType: "text/html; charset=utf-8"},
+		}, func() {
+			limits := testLimits()
+			limits.HtmlFooter = footer
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+
+			// Both should have injection
+			for _, f := range files {
+				reader, _, _ := storage.GetFile(ctx, config.Bucket, f.Key)
+				data, _ := io.ReadAll(reader)
+				reader.Close()
+				assert.Contains(t, string(data), footer)
+			}
+		})
+	})
+
+	t.Run("no injection when parameter empty", func(t *testing.T) {
+		originalContent := []byte("<html>Original</html>")
+
+		withZip([]zipEntry{
+			{name: "index.html", data: originalContent, expectedMimeType: "text/html; charset=utf-8"},
+		}, func() {
+			limits := testLimits()
+			limits.HtmlFooter = ""
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+
+			reader, _, _ := storage.GetFile(ctx, config.Bucket, files[0].Key)
+			data, _ := io.ReadAll(reader)
+			reader.Close()
+			assert.Equal(t, originalContent, data)
+		})
+	})
+
+	t.Run("reported size includes footer", func(t *testing.T) {
+		originalContent := []byte("<html>Test</html>")
+		footer := "<script>x</script>"
+
+		withZip([]zipEntry{
+			{name: "index.html", data: originalContent, expectedMimeType: "text/html; charset=utf-8"},
+		}, func() {
+			limits := testLimits()
+			limits.HtmlFooter = footer
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+
+			expectedSize := uint64(len(originalContent) + len(footer))
+			assert.Equal(t, expectedSize, files[0].Size)
+		})
+	})
+
+	t.Run("injects into nested index.html files", func(t *testing.T) {
+		footer := "<!-- footer -->"
+
+		withZip([]zipEntry{
+			{name: "index.html", data: []byte("root"), expectedMimeType: "text/html; charset=utf-8"},
+			{name: "subdir/index.html", data: []byte("nested"), expectedMimeType: "text/html; charset=utf-8"},
+			{name: "deep/nested/index.html", data: []byte("deep"), expectedMimeType: "text/html; charset=utf-8"},
+		}, func() {
+			limits := testLimits()
+			limits.HtmlFooter = footer
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 3)
+
+			// All index.html files should have footer
+			for _, f := range files {
+				reader, _, _ := storage.GetFile(ctx, config.Bucket, f.Key)
+				data, _ := io.ReadAll(reader)
+				reader.Close()
+				assert.Contains(t, string(data), footer)
+			}
+		})
+	})
+
+	t.Run("skips injection for compressed index.html", func(t *testing.T) {
+		// Gzip magic bytes + some data
+		gzipData := []byte{0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03}
+		footer := "<!-- should not appear -->"
+
+		withZip([]zipEntry{
+			{name: "index.html", data: gzipData, expectedMimeType: "text/html; charset=utf-8"},
+		}, func() {
+			limits := testLimits()
+			limits.HtmlFooter = footer
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+
+			// File should NOT have Injected flag (compressed content)
+			assert.False(t, files[0].Injected, "compressed index.html should not be injected")
+
+			// Content should be unchanged (still gzip bytes, no footer appended)
+			reader, _, _ := storage.GetFile(ctx, config.Bucket, files[0].Key)
+			data, _ := io.ReadAll(reader)
+			reader.Close()
+			assert.Equal(t, gzipData, data)
+			assert.NotContains(t, string(data), footer)
+		})
+	})
+}
+
+func Test_isIndexHtml(t *testing.T) {
+	tests := []struct {
+		filename string
+		expected bool
+	}{
+		{"index.html", true},
+		{"INDEX.HTML", true},
+		{"Index.Html", true},
+		{"INDEX.html", true},
+		{"subdir/index.html", true},
+		{"deep/nested/index.html", true},
+		{"notindex.html", false},
+		{"index.htm", false},
+		{"index.HTML.bak", false},
+		{"index.html.bak", false},
+		{"something.html", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.filename, func(t *testing.T) {
+			result := isIndexHtml(tc.filename)
+			assert.Equal(t, tc.expected, result, "isIndexHtml(%q)", tc.filename)
+		})
+	}
+}

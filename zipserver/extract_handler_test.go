@@ -58,3 +58,21 @@ func Test_LimitsOnlyFilesAndFilterMutuallyExclusive(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot be used together")
 }
+
+func Test_LimitsWithHtmlFooter(t *testing.T) {
+	footer := "<script src=\"analytics.js\"></script>"
+	values, err := url.ParseQuery("html_footer=" + url.QueryEscape(footer))
+	assert.NoError(t, err)
+
+	el, err := loadLimits(values, &defaultConfig)
+	assert.NoError(t, err)
+	assert.EqualValues(t, footer, el.HtmlFooter)
+
+	// empty footer should not be set
+	values, err = url.ParseQuery("")
+	assert.NoError(t, err)
+
+	el, err = loadLimits(values, &defaultConfig)
+	assert.NoError(t, err)
+	assert.EqualValues(t, "", el.HtmlFooter)
+}

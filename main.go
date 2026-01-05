@@ -48,6 +48,7 @@ var (
 	extractMaxNumFiles  = extractCmd.Flag("max-num-files", "Maximum number of files").Int()
 	extractFilter       = extractCmd.Flag("filter", "Glob pattern to filter extracted files (e.g., '*.png', 'assets/**/*.js')").String()
 	extractOnlyFiles    = extractCmd.Flag("only-file", "Exact file path to extract (can be specified multiple times, mutually exclusive with --filter)").Strings()
+	extractHtmlFooter   = extractCmd.Flag("html-footer", "HTML snippet to append to all index.html files").String()
 
 	// Copy command
 	copyCmd    = app.Command("copy", "Copy a file to target storage")
@@ -84,6 +85,7 @@ var (
 	testzipMaxNumFiles  = testzipCmd.Flag("max-num-files", "Maximum number of files").Int()
 	testzipFilter       = testzipCmd.Flag("filter", "Glob pattern to filter extracted files").String()
 	testzipOnlyFiles    = testzipCmd.Flag("only-file", "Exact file path to extract (can be specified multiple times, mutually exclusive with --filter)").Strings()
+	testzipHtmlFooter   = testzipCmd.Flag("html-footer", "HTML snippet to append to all index.html files").String()
 
 	// Dump command
 	dumpCmd = app.Command("dump", "Dump parsed config and exit")
@@ -186,6 +188,9 @@ func runExtract(config *zipserver.Config) {
 			log.Fatal("--only-file and --filter cannot be used together")
 		}
 		limits.OnlyFiles = *extractOnlyFiles
+	}
+	if *extractHtmlFooter != "" {
+		limits.HtmlFooter = *extractHtmlFooter
 	}
 
 	params := zipserver.ExtractParams{
@@ -365,6 +370,9 @@ func runTestzip(config *zipserver.Config) {
 			log.Fatal("--only-file and --filter cannot be used together")
 		}
 		limits.OnlyFiles = *testzipOnlyFiles
+	}
+	if *testzipHtmlFooter != "" {
+		limits.HtmlFooter = *testzipHtmlFooter
 	}
 	must(zipserver.ServeZip(config, *testzipFile, limits))
 }

@@ -130,6 +130,31 @@ curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&only_f
 
 Note: `--filter` (glob pattern) and `--only-file` (exact paths) are mutually exclusive.
 
+### HTML Footer Injection
+
+When extracting HTML games or web content, you can inject an HTML snippet at the end of all `index.html` files. This is useful for adding analytics, scripts, or other content without post-processing.
+
+**CLI:**
+```bash
+zipserver extract --key zips/game.zip --prefix games/123/ \
+  --html-footer '<script src="/analytics.js"></script>'
+```
+
+**HTTP API:**
+```bash
+# Use POST for long footer content
+curl -X POST "http://localhost:8090/extract" \
+  -d "key=zips/game.zip" \
+  -d "prefix=games/123/" \
+  -d "html_footer=<script src=\"/analytics.js\"></script>"
+```
+
+**Behavior:**
+- Matches `index.html` files case-insensitively (e.g., `INDEX.HTML`, `Index.Html`)
+- Injects into all `index.html` files, including nested ones (e.g., `subdir/index.html`)
+- Skips pre-compressed files (gzip/brotli) since appending to compressed streams would corrupt them
+- The response includes `"Injected": true` for each file that received the footer
+
 ## Copy
 
 Copy a file from primary storage to a target storage (e.g., S3).
@@ -229,6 +254,9 @@ zipserver testzip ./my_file.zip
 # With filtering
 zipserver testzip ./my_file.zip --filter "*.png"
 zipserver testzip ./my_file.zip --only-file "readme.txt"
+
+# With HTML footer injection
+zipserver testzip ./my_file.zip --html-footer '<script>console.log("test")</script>'
 ```
 
 ## Storage Targets
