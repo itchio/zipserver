@@ -14,6 +14,17 @@ import (
 // mutex for keys currently being extracted
 var extractLockTable = NewLockTable()
 
+// formatExtractError provides user-friendly error messages for extraction failures
+func formatExtractError(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "Zip extraction timed out"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "Zip extraction was canceled (possibly due to another file failing)"
+	}
+	return err.Error()
+}
+
 // Extract performs a zip extraction operation
 func (o *Operations) Extract(ctx context.Context, params ExtractParams) ExtractResult {
 	limits := params.Limits
@@ -177,7 +188,8 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		result := ops.Extract(ctx, extractParams)
 		if result.Err != nil {
 			globalMetrics.TotalErrors.Add(1)
-			return writeJSONError(w, "ExtractError", result.Err)
+			log.Print("Extraction failed: ", result.Err)
+			return writeJSONError(w, "ExtractError", fmt.Errorf("%s", formatExtractError(result.Err)))
 		}
 
 		return writeJSONMessage(w, struct {
@@ -198,16 +210,10 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		resValues := url.Values{}
 
 		if result.Err != nil {
-			errMessage := result.Err.Error()
-
-			if errors.Is(result.Err, context.DeadlineExceeded) {
-				errMessage = "Zip extraction timed out"
-			}
-
 			globalMetrics.TotalErrors.Add(1)
 			resValues.Add("Type", "ExtractError")
-			resValues.Add("Error", errMessage)
-			log.Print("Extraction failed ", result.Err)
+			resValues.Add("Error", formatExtractError(result.Err))
+			log.Print("Extraction failed: ", result.Err)
 		} else {
 			resValues.Add("Success", "true")
 			for idx, extractedFile := range result.ExtractedFiles {

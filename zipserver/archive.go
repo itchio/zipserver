@@ -246,11 +246,25 @@ func uploadWorker(
 		file := task.File
 		key := task.Key
 
-		ctx, cancel := context.WithTimeout(ctx, time.Duration(a.Config.FilePutTimeout))
-		result := a.extractAndUploadOne(ctx, key, file)
+		startTime := time.Now()
+		timeout := time.Duration(a.Config.FilePutTimeout)
+		uploadCtx, cancel := context.WithTimeout(ctx, timeout)
+		result := a.extractAndUploadOne(uploadCtx, key, file)
 		cancel() // Free resources now instead of deferring till func returns
 
 		if result.Error != nil {
+			elapsed := time.Since(startTime)
+			// Check if this was a per-file timeout
+			if errors.Is(result.Error, context.DeadlineExceeded) {
+				result.Error = fmt.Errorf("file upload timed out after %v (limit %v): %s", elapsed.Round(time.Millisecond), timeout, key)
+			} else if errors.Is(result.Error, context.Canceled) {
+				// Check if the parent context was canceled (another worker failed or job timeout)
+				if ctx.Err() != nil {
+					log.Printf("Upload canceled for %s after %v (another operation failed)", key, elapsed.Round(time.Millisecond))
+					results <- result
+					return
+				}
+			}
 			log.Print("Failed sending " + key + ": " + result.Error.Error())
 			// Return early to abort further work on the first error.
 			results <- result
@@ -267,6 +281,7 @@ func (a *ArchiveExtractor) sendZipExtracted(
 	prefix, fname string,
 	limits *ExtractLimits,
 ) ([]ExtractedFile, error) {
+	startTime := time.Now()
 	zipReader, err := zip.OpenReader(fname)
 	if err != nil {
 		return nil, err
@@ -370,7 +385,10 @@ func (a *ArchiveExtractor) sendZipExtracted(
 		select {
 		case result := <-results:
 			if result.Error != nil {
-				extractError = result.Error
+				// Only capture the first non-context error, or the first error if none yet
+				if extractError == nil || (!errors.Is(result.Error, context.Canceled) && !errors.Is(result.Error, context.DeadlineExceeded)) {
+					extractError = result.Error
+				}
 				cancel()
 			} else {
 				extractedFiles = append(extractedFiles, ExtractedFile{
@@ -387,13 +405,14 @@ func (a *ArchiveExtractor) sendZipExtracted(
 
 	close(results)
 
+	elapsed := time.Since(startTime)
 	if extractError != nil {
-		log.Printf("Upload error: %s", extractError.Error())
+		log.Printf("Upload error after %v: %s", elapsed.Round(time.Millisecond), extractError.Error())
 		a.abortUpload(extractedFiles)
 		return nil, extractError
 	}
 
-	log.Printf("Sent %d files", fileCount)
+	log.Printf("Sent %d files in %v", fileCount, elapsed.Round(time.Millisecond))
 	return extractedFiles, nil
 }
 
