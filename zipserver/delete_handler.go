@@ -248,21 +248,31 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 		result := ops.Delete(jobCtx, deleteParams)
 
 		if result.Err != nil {
+			if callbackURL == "-" {
+				globalMetrics.TotalErrors.Add(1)
+				log.Printf("DeleteError async (callback=-): %v", result.Err)
+				return
+			}
 			notifyError(callbackURL, result.Err)
 			return
 		}
 
-		resValues := url.Values{}
-		resValues.Add("Success", fmt.Sprintf("%t", len(result.Errors) == 0))
-		resValues.Add("TotalKeys", fmt.Sprintf("%d", result.TotalKeys))
-		resValues.Add("DeletedKeys", fmt.Sprintf("%d", result.DeletedKeys))
+		if callbackURL != "-" {
+			resValues := url.Values{}
+			resValues.Add("Success", fmt.Sprintf("%t", len(result.Errors) == 0))
+			resValues.Add("TotalKeys", fmt.Sprintf("%d", result.TotalKeys))
+			resValues.Add("DeletedKeys", fmt.Sprintf("%d", result.DeletedKeys))
 
-		if len(result.Errors) > 0 {
-			errorsJSON, _ := json.Marshal(result.Errors)
-			resValues.Add("Errors", string(errorsJSON))
+			if len(result.Errors) > 0 {
+				errorsJSON, _ := json.Marshal(result.Errors)
+				resValues.Add("Errors", string(errorsJSON))
+			}
+
+			notifyCallback(callbackURL, resValues)
+		} else if len(result.Errors) > 0 {
+			globalMetrics.TotalErrors.Add(1)
+			log.Printf("Delete async (callback=-) had %d errors: %v", len(result.Errors), result.Errors)
 		}
-
-		notifyCallback(callbackURL, resValues)
 	}()
 
 	return writeJSONMessage(w, struct {

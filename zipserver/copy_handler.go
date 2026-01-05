@@ -205,18 +205,25 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		result := ops.Copy(jobCtx, copyParams)
 
 		if result.Err != nil {
+			if callbackURL == "-" {
+				globalMetrics.TotalErrors.Add(1)
+				log.Printf("CopyError async (callback=-): %v", result.Err)
+				return
+			}
 			notifyError(callbackURL, result.Err)
 			return
 		}
 
-		resValues := url.Values{}
-		resValues.Add("Success", "true")
-		resValues.Add("Key", result.Key)
-		resValues.Add("Duration", result.Duration)
-		resValues.Add("Size", fmt.Sprintf("%d", result.Size))
-		resValues.Add("Md5", result.Md5)
+		if callbackURL != "-" {
+			resValues := url.Values{}
+			resValues.Add("Success", "true")
+			resValues.Add("Key", result.Key)
+			resValues.Add("Duration", result.Duration)
+			resValues.Add("Size", fmt.Sprintf("%d", result.Size))
+			resValues.Add("Md5", result.Md5)
 
-		notifyCallback(callbackURL, resValues)
+			notifyCallback(callbackURL, resValues)
+		}
 	})()
 
 	return writeJSONMessage(w, struct {

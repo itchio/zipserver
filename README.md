@@ -288,6 +288,15 @@ Some HTTP handlers support callbacks to notify your application when long-runnin
 
 The callback is sent as a POST request with `Content-Type: application/x-www-form-urlencoded`.
 
+### Fire-and-Forget Mode
+
+For `/copy` and `/delete`, you can use `callback=-` to run the operation asynchronously without receiving a callback notification. This is useful when you want to trigger an operation but don't need to know when it completes.
+
+```bash
+# Delete files asynchronously without callback
+curl -X POST "http://localhost:8090/delete" -d "keys[]=file.zip" -d "callback=-"
+```
+
 ### Callback Response Fields
 
 **On success**, callbacks include `Success=true` plus operation-specific fields:
