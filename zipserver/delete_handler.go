@@ -229,6 +229,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 
 		result := ops.Delete(ctx, deleteParams)
 		if result.Err != nil {
+			globalMetrics.TotalErrors.Add(1)
 			return writeJSONError(w, "DeleteError", result.Err)
 		}
 

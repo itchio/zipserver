@@ -99,6 +99,7 @@ func notifyCallback(callbackURL string, resValues url.Values) error {
 	outBody := bytes.NewBufferString(resValues.Encode())
 	req, err := http.NewRequestWithContext(notifyCtx, http.MethodPost, callbackURL, outBody)
 	if err != nil {
+		globalMetrics.TotalCallbackFailures.Add(1)
 		log.Print("Failed to create callback request: ", err)
 		return err
 	}
@@ -106,6 +107,7 @@ func notifyCallback(callbackURL string, resValues url.Values) error {
 
 	response, err := http.DefaultClient.Do(req)
 	if err != nil {
+		globalMetrics.TotalCallbackFailures.Add(1)
 		log.Print("Failed to deliver callback: ", err)
 		return err
 	}
@@ -183,6 +185,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 
 		result := ops.Copy(ctx, copyParams)
 		if result.Err != nil {
+			globalMetrics.TotalErrors.Add(1)
 			return writeJSONError(w, "CopyError", result.Err)
 		}
 

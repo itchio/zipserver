@@ -166,6 +166,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	limits, err := loadLimits(params, globalConfig)
 	if err != nil {
 		extractLockTable.releaseKey(lockKey)
+		globalMetrics.TotalErrors.Add(1)
 		return writeJSONError(w, "InvalidParams", err)
 	}
 	ops := NewOperations(globalConfig)
@@ -232,6 +233,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		outBody := bytes.NewBufferString(resValues.Encode())
 		req, err := http.NewRequestWithContext(nofityCtx, http.MethodPost, asyncURL, outBody)
 		if err != nil {
+			globalMetrics.TotalCallbackFailures.Add(1)
 			log.Printf("Failed to create callback request: %v", err)
 			return
 		}
@@ -241,6 +243,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		if err == nil {
 			asyncResponse.Body.Close()
 		} else {
+			globalMetrics.TotalCallbackFailures.Add(1)
 			log.Print("Failed to deliver callback: " + err.Error())
 		}
 	})()

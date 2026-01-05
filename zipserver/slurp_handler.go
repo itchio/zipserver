@@ -44,7 +44,7 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 		contentType = "application/octet-stream"
 	}
 
-	body := io.Reader(res.Body)
+	body := io.Reader(metricsReadCloser{res.Body, &globalMetrics.TotalBytesDownloaded})
 
 	if params.MaxBytes > 0 {
 		if uint64(res.ContentLength) > params.MaxBytes {
@@ -99,6 +99,7 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 		return SlurpResult{Err: err}
 	}
 
+	globalMetrics.TotalSlurpedFiles.Add(1)
 	return SlurpResult{}
 }
 
@@ -164,6 +165,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 
 		err = process(ctx)
 		if err != nil {
+			globalMetrics.TotalErrors.Add(1)
 			return writeJSONError(w, "SlurpError", err)
 		}
 
@@ -178,6 +180,11 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		defer cancel()
 
 		err = process(ctx)
+
+		if err != nil {
+			globalMetrics.TotalErrors.Add(1)
+		}
+
 		log.Print("Notifying " + asyncURL)
 
 		resValues := url.Values{}
@@ -194,6 +201,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		outBody := bytes.NewBufferString(resValues.Encode())
 		req, err := http.NewRequestWithContext(notifyCtx, http.MethodPost, asyncURL, outBody)
 		if err != nil {
+			globalMetrics.TotalCallbackFailures.Add(1)
 			log.Printf("Failed to create callback request: %v", err)
 			return
 		}
@@ -201,6 +209,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 
 		_, err = http.DefaultClient.Do(req)
 		if err != nil {
+			globalMetrics.TotalCallbackFailures.Add(1)
 			log.Print("Failed to deliver callback: " + err.Error())
 		}
 	})()
