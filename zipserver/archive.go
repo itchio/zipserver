@@ -27,6 +27,12 @@ var (
 )
 
 func init() {
+	if dir := os.Getenv("ZIPSERVER_TMP_DIR"); dir != "" {
+		tmpDir = dir
+	} else if dir := os.Getenv("RUNTIME_DIRECTORY"); dir != "" {
+		tmpDir = dir
+	}
+
 	mime.AddExtensionType(".unityweb", "application/octet-stream")
 	mime.AddExtensionType(".wasm", "application/wasm")
 	mime.AddExtensionType(".data", "application/octet-stream") // modern unity data file

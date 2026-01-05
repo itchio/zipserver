@@ -45,7 +45,7 @@ func NewGcsStorageWithCredentials(privateKeyPath, clientEmail string) (*GcsStora
 		return nil, fmt.Errorf("GCS credentials require both privateKeyPath and clientEmail")
 	}
 
-	pemBytes, err := os.ReadFile(privateKeyPath)
+	pemBytes, err := os.ReadFile(resolveCredentialPath(privateKeyPath))
 
 	if err != nil {
 		return nil, err

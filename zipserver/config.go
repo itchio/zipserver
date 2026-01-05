@@ -5,8 +5,31 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
+
+// resolveCredentialPath resolves a credential file path.
+// If CREDENTIALS_DIRECTORY is set and the path is not absolute,
+// it checks the credentials directory first (for systemd LoadCredential support).
+func resolveCredentialPath(path string) string {
+	if path == "" {
+		return path
+	}
+
+	credDir := os.Getenv("CREDENTIALS_DIRECTORY")
+	if credDir == "" || filepath.IsAbs(path) {
+		return path
+	}
+
+	// Check if file exists in credentials directory
+	credPath := filepath.Join(credDir, filepath.Base(path))
+	if _, err := os.Stat(credPath); err == nil {
+		return credPath
+	}
+
+	return path
+}
 
 // DefaultConfigFname is the default name for zipserver's config file
 var DefaultConfigFname = "zipserver.json"
