@@ -58,7 +58,7 @@ var (
 	// Delete command
 	deleteCmd    = app.Command("delete", "Delete files from storage")
 	deleteKeys   = deleteCmd.Flag("key", "Storage keys to delete (can be specified multiple times)").Required().Strings()
-	deleteTarget = deleteCmd.Flag("target", "Target storage name").Required().String()
+	deleteTarget = deleteCmd.Flag("target", "Target storage name (if omitted, delete from primary storage within ExtractPrefix)").String()
 
 	// List command
 	listCmd  = app.Command("list", "List files in a zip archive")

@@ -7,28 +7,79 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 )
 
+// validateKeysInExtractPrefix checks that all keys are within the extract prefix.
+// This is used to restrict deletions on primary storage to only extracted files.
+func validateKeysInExtractPrefix(keys []string, extractPrefix string) error {
+	cleanPrefix := path.Clean(extractPrefix)
+	prefix := cleanPrefix
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	var invalid []string
+	for _, key := range keys {
+		if key == "" || path.IsAbs(key) {
+			invalid = append(invalid, key)
+			continue
+		}
+		cleanKey := path.Clean(key)
+		if cleanKey == "." || cleanKey == ".." || strings.HasPrefix(cleanKey, "../") {
+			invalid = append(invalid, key)
+			continue
+		}
+		if !strings.HasPrefix(cleanKey, prefix) {
+			invalid = append(invalid, key)
+		}
+	}
+	if len(invalid) > 0 {
+		return fmt.Errorf("keys must be within extract prefix %q: %v", extractPrefix, invalid)
+	}
+	return nil
+}
+
 var deleteLockTable = NewLockTable()
 
-// Delete deletes files from a target storage
+// Delete deletes files from a target storage.
+// If TargetName is empty, deletes from primary storage (restricted to ExtractPrefix).
 func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOperationResult {
-	storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
-	if storageTargetConfig == nil {
-		return DeleteOperationResult{Err: fmt.Errorf("invalid target: %s", params.TargetName)}
-	}
+	var targetStorage Storage
+	var targetBucket string
+	var targetName string
+	var err error
 
-	if storageTargetConfig.Readonly {
-		return DeleteOperationResult{Err: fmt.Errorf("target %s is readonly", params.TargetName)}
-	}
+	if params.TargetName == "" {
+		// Primary storage: validate keys are within extract prefix
+		if err := validateKeysInExtractPrefix(params.Keys, o.config.ExtractPrefix); err != nil {
+			return DeleteOperationResult{Err: err}
+		}
 
-	targetBucket := storageTargetConfig.Bucket
+		targetStorage, err = NewGcsStorage(o.config)
+		if err != nil {
+			return DeleteOperationResult{Err: fmt.Errorf("failed to create primary storage: %v", err)}
+		}
+		targetBucket = o.config.Bucket
+		targetName = ""
+	} else {
+		// Named target storage
+		storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
+		if storageTargetConfig == nil {
+			return DeleteOperationResult{Err: fmt.Errorf("invalid target: %s", params.TargetName)}
+		}
 
-	targetStorage, err := storageTargetConfig.NewStorageClient()
-	if err != nil {
-		return DeleteOperationResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
+		if storageTargetConfig.Readonly {
+			return DeleteOperationResult{Err: fmt.Errorf("target %s is readonly", params.TargetName)}
+		}
+
+		targetStorage, err = storageTargetConfig.NewStorageClient()
+		if err != nil {
+			return DeleteOperationResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
+		}
+		targetBucket = storageTargetConfig.Bucket
+		targetName = params.TargetName
 	}
 
 	numWorkers := o.config.ExtractionThreads
@@ -41,7 +92,7 @@ func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOper
 	done := make(chan struct{}, numWorkers)
 
 	for i := 0; i < numWorkers; i++ {
-		go deleteWorker(ctx, targetStorage, targetBucket, params.TargetName, tasks, results, done)
+		go deleteWorker(ctx, targetStorage, targetBucket, targetName, tasks, results, done)
 	}
 
 	// Send tasks to workers
@@ -81,7 +132,11 @@ func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOper
 
 	close(results)
 
-	log.Printf("Delete complete: [%s] deleted %d/%d files", params.TargetName, deletedCount, len(params.Keys))
+	displayName := targetName
+	if displayName == "" {
+		displayName = "primary"
+	}
+	log.Printf("Delete complete: [%s] deleted %d/%d files", displayName, deletedCount, len(params.Keys))
 
 	return DeleteOperationResult{
 		TotalKeys:   len(params.Keys),
@@ -115,7 +170,10 @@ func deleteWorker(
 	defer func() { done <- struct{}{} }()
 
 	for task := range tasks {
-		lockKey := fmt.Sprintf("%s:%s", targetName, task.Key)
+		lockKey := task.Key
+		if targetName != "" {
+			lockKey = fmt.Sprintf("%s:%s", targetName, task.Key)
+		}
 		if !deleteLockTable.tryLockKey(lockKey) {
 			results <- DeleteResult{Key: task.Key, Error: fmt.Errorf("key is locked")}
 			continue
@@ -157,19 +215,9 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	targetName, err := getParam(params, "target")
-	if err != nil {
-		return err
-	}
-
-	storageTargetConfig := globalConfig.GetStorageTargetByName(targetName)
-	if storageTargetConfig == nil {
-		return fmt.Errorf("invalid target: %s", targetName)
-	}
-
-	if storageTargetConfig.Readonly {
-		return fmt.Errorf("target %s is readonly", targetName)
-	}
+	// target is optional; if not provided, delete from primary storage (restricted to ExtractPrefix)
+	// Validation of target and prefix constraints is handled by Operations.Delete
+	targetName := params.Get("target")
 
 	ops := NewOperations(globalConfig)
 	deleteParams := DeleteParams{
