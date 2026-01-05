@@ -72,6 +72,23 @@ zipserver server --listen 127.0.0.1:8090
 
 **Warning:** This HTTP server exposes unauthenticated operations on your storage bucket. It's recommended to avoid public network interfaces.
 
+### Monitoring Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/status` | Show currently running tasks (held locks per operation type) |
+| `/metrics` | Prometheus-compatible metrics |
+
+**Example `/status` response:**
+```json
+{
+  "copy_locks": [],
+  "extract_locks": [{"Key": "s3backup:zips/large.zip", "LockedAt": "...", "LockedSeconds": 12.5}],
+  "slurp_locks": [],
+  "delete_locks": []
+}
+```
+
 ## Extract
 
 Extract a zip file and upload individual files to a prefix.
