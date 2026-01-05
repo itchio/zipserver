@@ -207,11 +207,13 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		_, err = http.DefaultClient.Do(req)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			globalMetrics.TotalCallbackFailures.Add(1)
 			log.Print("Failed to deliver callback: " + err.Error())
+			return
 		}
+		resp.Body.Close()
 	})()
 
 	return writeJSONMessage(w, struct {
