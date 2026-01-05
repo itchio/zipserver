@@ -325,3 +325,73 @@ The bucket needs correct access settings:
 
 - Public access must be enabled, not prevented.
 - Access control should be set to fine-grained ("legacy ACL"), not uniform.
+
+## Systemd Integration
+
+Zipserver supports systemd's sandboxing features through environment variables:
+
+| Variable | Purpose | Systemd Directive |
+|----------|---------|-------------------|
+| `RUNTIME_DIRECTORY` | Temp directory for zip extraction (instead of `./zip_tmp`) | `RuntimeDirectory=` |
+| `CREDENTIALS_DIRECTORY` | Resolves credential paths like `PrivateKeyPath` | `LoadCredential=` |
+| `ZIPSERVER_TMP_DIR` | Custom temp directory (takes precedence over `RUNTIME_DIRECTORY`) | - |
+
+### Credential Resolution
+
+When `CREDENTIALS_DIRECTORY` is set, zipserver checks this directory first when loading credential files (e.g., `PrivateKeyPath`, `GCSPrivateKeyPath`). This allows your config to use relative paths like `"PrivateKeyPath": "secret/storage.pem"` while systemd loads the actual file via `LoadCredential=`.
+
+### Example Hardened Unit File
+
+```ini
+[Unit]
+Description=zipserver
+After=network.target
+
+[Service]
+User=myuser
+
+# Load credentials to /run/credentials/zipserver/
+LoadCredential=zipserver.json:/path/to/config/zipserver.json
+LoadCredential=storage.pem:/path/to/credentials/storage.pem
+
+ExecStart=/usr/local/bin/zipserver --config=${CREDENTIALS_DIRECTORY}/zipserver.json
+
+# Temp directory for zip extraction
+RuntimeDirectory=zipserver
+RuntimeDirectoryMode=0700
+
+# Filesystem restrictions
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=/usr/local/bin/zipserver
+PrivateTmp=true
+
+# Network
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Privilege restrictions
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System call filtering
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+# Memory protections
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Notes:**
+
+- `ProtectHome=tmpfs` combined with `BindReadOnlyPaths=` allows exposing only the binary while hiding home directories
+- Use `systemd-analyze security zipserver.service` to check the security score
+- The `RuntimeDirectory` is automatically cleaned up when the service stops
