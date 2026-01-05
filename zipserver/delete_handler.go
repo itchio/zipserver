@@ -210,10 +210,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 
 	params := r.Form
 
-	callbackURL, err := getParam(params, "callback")
-	if err != nil {
-		return err
-	}
+	callbackURL := params.Get("callback")
 
 	// target is optional; if not provided, delete from primary storage (restricted to ExtractPrefix)
 	// Validation of target and prefix constraints is handled by Operations.Delete
@@ -225,6 +222,25 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 		TargetName: targetName,
 	}
 
+	// sync codepath
+	if callbackURL == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
+		defer cancel()
+
+		result := ops.Delete(ctx, deleteParams)
+		if result.Err != nil {
+			return writeJSONError(w, "DeleteError", result.Err)
+		}
+
+		return writeJSONMessage(w, struct {
+			Success     bool
+			TotalKeys   int
+			DeletedKeys int
+			Errors      []DeleteError
+		}{len(result.Errors) == 0, result.TotalKeys, result.DeletedKeys, result.Errors})
+	}
+
+	// async codepath
 	go func() {
 		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()

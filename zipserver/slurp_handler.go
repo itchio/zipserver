@@ -159,7 +159,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 
 	asyncURL := params.Get("async")
 	if asyncURL == "" {
-		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
 		err = process(ctx)

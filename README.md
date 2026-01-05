@@ -141,6 +141,10 @@ zipserver copy --key path/to/file.zip --target s3backup
 
 **HTTP API:**
 ```bash
+# Sync mode (waits for completion)
+curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup"
+
+# Async mode (returns immediately, notifies callback when done)
 curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup&callback=http://example.com/done"
 ```
 
@@ -155,6 +159,13 @@ zipserver delete --key file1.zip --key file2.zip --target s3backup
 
 **HTTP API:**
 ```bash
+# Sync mode (waits for completion)
+curl -X POST "http://localhost:8090/delete" \
+  -d "keys[]=file1.zip" \
+  -d "keys[]=file2.zip" \
+  -d "target=s3backup"
+
+# Async mode (returns immediately, notifies callback when done)
 curl -X POST "http://localhost:8090/delete" \
   -d "keys[]=file1.zip" \
   -d "keys[]=file2.zip" \
@@ -265,8 +276,8 @@ Some HTTP handlers support callbacks to notify your application when long-runnin
 |----------|-----------|---------------------|
 | `/extract` | `async` | Yes (omit `async` for sync) |
 | `/slurp` | `async` | Yes (omit `async` for sync) |
-| `/copy` | `callback` | No (always async) |
-| `/delete` | `callback` | No (always async) |
+| `/copy` | `callback` | Yes (omit `callback` for sync) |
+| `/delete` | `callback` | Yes (omit `callback` for sync) |
 
 ### How It Works
 

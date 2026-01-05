@@ -182,8 +182,8 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	if asyncURL == "" {
 		defer extractLockTable.releaseKey(lockKey)
 
-			ctx, cancel := context.WithTimeout(r.Context(), time.Duration(globalConfig.JobTimeout))
-			defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
+		defer cancel()
 
 		result := ops.Extract(ctx, extractParams)
 		if result.Err != nil {

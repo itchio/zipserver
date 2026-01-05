@@ -144,10 +144,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	callbackURL, err := getParam(params, "callback")
-	if err != nil {
-		return err
-	}
+	callbackURL := params.Get("callback")
 
 	targetName, err := getParam(params, "target")
 	if err != nil {
@@ -177,6 +174,28 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		ExpectedBucket: expectedBucket,
 	}
 
+	// sync codepath
+	if callbackURL == "" {
+		defer copyLockTable.releaseKey(lockKey)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
+		defer cancel()
+
+		result := ops.Copy(ctx, copyParams)
+		if result.Err != nil {
+			return writeJSONError(w, "CopyError", result.Err)
+		}
+
+		return writeJSONMessage(w, struct {
+			Success  bool
+			Key      string
+			Duration string
+			Size     int64
+			Md5      string
+		}{true, result.Key, result.Duration, result.Size, result.Md5})
+	}
+
+	// async codepath
 	go (func() {
 		defer copyLockTable.releaseKey(lockKey)
 
