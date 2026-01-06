@@ -54,6 +54,7 @@ type DeleteParams struct {
 type DeleteOperationResult struct {
 	TotalKeys   int
 	DeletedKeys int
+	Duration    string
 	Errors      []DeleteError
 	Err         error
 }

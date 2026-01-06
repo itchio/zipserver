@@ -46,6 +46,8 @@ var deleteLockTable = NewLockTable()
 // Delete deletes files from a target storage.
 // If TargetName is empty, deletes from primary storage (restricted to ExtractPrefix).
 func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOperationResult {
+	startTime := time.Now()
+
 	var targetStorage Storage
 	var targetBucket string
 	var targetName string
@@ -136,11 +138,13 @@ func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOper
 	if displayName == "" {
 		displayName = "primary"
 	}
-	log.Printf("Delete complete: [%s] deleted %d/%d files", displayName, deletedCount, len(params.Keys))
+	duration := time.Since(startTime)
+	log.Printf("Delete complete: [%s] deleted %d/%d files, duration: %.4fs", displayName, deletedCount, len(params.Keys), duration.Seconds())
 
 	return DeleteOperationResult{
 		TotalKeys:   len(params.Keys),
 		DeletedKeys: deletedCount,
+		Duration:    fmt.Sprintf("%.4fs", duration.Seconds()),
 		Errors:      deleteErrors,
 	}
 }
