@@ -1,5 +1,7 @@
 package zipserver
 
+import "fmt"
+
 // Operations provides the core business logic for all zipserver operations.
 // It can be used by both HTTP handlers and CLI commands.
 type Operations struct {
@@ -29,9 +31,57 @@ type ExtractResult struct {
 // CopyParams contains parameters for the copy operation
 type CopyParams struct {
 	Key            string // Storage key to copy
-	TargetName     string // Target storage name
+	DestKey        string // Optional: destination key (defaults to Key if empty)
+	TargetName     string // Optional: target storage name (if empty, copies within primary storage)
 	ExpectedBucket string // Optional: expected bucket for validation
 	HtmlFooter     string // Optional: HTML to append to index.html files
+}
+
+// DestKeyOrKey returns the destination key, defaulting to Key when DestKey is empty.
+func (p CopyParams) DestKeyOrKey() string {
+	if p.DestKey == "" {
+		return p.Key
+	}
+	return p.DestKey
+}
+
+// Validate checks copy parameter requirements including target validation.
+func (p CopyParams) Validate(config *Config) error {
+	if p.Key == "" {
+		return fmt.Errorf("Key is required")
+	}
+
+	destKey := p.DestKeyOrKey()
+
+	// Require either cross-storage copy (TargetName) or rename (DestKey != Key)
+	if p.TargetName == "" && p.DestKey == "" {
+		return fmt.Errorf("missing required parameter: target or dest_key")
+	}
+	if p.TargetName == "" && destKey == p.Key {
+		return fmt.Errorf("dest_key must differ from key for same-storage copy")
+	}
+
+	// Validate target and expected bucket
+	if p.TargetName == "" {
+		// Same-storage copy: validate against primary bucket
+		if p.ExpectedBucket != "" && p.ExpectedBucket != config.Bucket {
+			return fmt.Errorf("expected bucket does not match primary bucket: %s != %s", p.ExpectedBucket, config.Bucket)
+		}
+	} else {
+		// Cross-storage copy: validate target exists and is writable
+		storageTargetConfig := config.GetStorageTargetByName(p.TargetName)
+		if storageTargetConfig == nil {
+			return fmt.Errorf("invalid target: %s", p.TargetName)
+		}
+		if storageTargetConfig.Readonly {
+			return fmt.Errorf("target %s is readonly", p.TargetName)
+		}
+		if p.ExpectedBucket != "" && p.ExpectedBucket != storageTargetConfig.Bucket {
+			return fmt.Errorf("expected bucket does not match target bucket: %s != %s", p.ExpectedBucket, storageTargetConfig.Bucket)
+		}
+	}
+
+	return nil
 }
 
 // CopyResult contains the result of a copy operation

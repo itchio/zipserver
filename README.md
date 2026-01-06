@@ -54,7 +54,7 @@ zipserver <command> --help    # Show help for a specific command
 |---------|-------------|---------|---------------|
 | `server` | Start HTTP server (default) | n/a | |
 | `extract` | Extract a zip file to storage | Source read, optional target write | `/extract` |
-| `copy` | Copy a file to target storage | Source read, target write | `/copy` |
+| `copy` | Copy a file to target storage or different key | Source read, target or source write | `/copy` |
 | `delete` | Delete files from storage | Target write | `/delete` |
 | `list` | List files in a zip archive | Source read, URL, or local file | `/list` |
 | `slurp` | Download a URL and store it | Source write, or optional target write | `/slurp` |
@@ -157,11 +157,18 @@ curl -X POST "http://localhost:8090/extract" \
 
 ## Copy
 
-Copy a file from primary storage to a target storage (e.g., S3).
+Copy a file from primary storage to a target storage, or to a different key within primary storage.
 
 **CLI:**
 ```bash
+# Copy to a target storage
 zipserver copy --key path/to/file.zip --target s3backup
+
+# Copy to a different key within primary storage (rename/move)
+zipserver copy --key path/to/file.zip --dest-key archive/file.zip
+
+# Copy to target storage with a different destination key
+zipserver copy --key path/to/file.zip --target s3backup --dest-key renamed.zip
 
 # With HTML footer injection
 zipserver copy --key games/123/index.html --target s3backup \
@@ -173,6 +180,12 @@ zipserver copy --key games/123/index.html --target s3backup \
 # Sync mode (waits for completion)
 curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup"
 
+# Copy within primary storage to a different key
+curl "http://localhost:8090/copy?key=path/to/file.zip&dest_key=archive/file.zip"
+
+# Copy to target with different destination key
+curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup&dest_key=renamed.zip"
+
 # Async mode (returns immediately, notifies callback when done)
 curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup&callback=http://example.com/done"
 
@@ -182,6 +195,8 @@ curl -X POST "http://localhost:8090/copy" \
   -d "target=s3backup" \
   -d "html_footer=<script src=\"/analytics.js\"></script>"
 ```
+
+Either `target` or `dest_key` (or both) must be provided. When copying within the same storage (no `target`), `dest_key` must differ from `key`.
 
 ### HTML Footer Injection for Copy
 

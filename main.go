@@ -51,9 +51,10 @@ var (
 	extractHtmlFooter   = extractCmd.Flag("html-footer", "HTML snippet to append to all index.html files").String()
 
 	// Copy command
-	copyCmd        = app.Command("copy", "Copy a file to target storage")
+	copyCmd        = app.Command("copy", "Copy a file to target storage or different key")
 	copyKey        = copyCmd.Flag("key", "Storage key to copy").Required().String()
-	copyTarget     = copyCmd.Flag("target", "Target storage name").Required().String()
+	copyDestKey    = copyCmd.Flag("dest-key", "Destination key (defaults to source key)").String()
+	copyTarget     = copyCmd.Flag("target", "Target storage name").String()
 	copyBucket     = copyCmd.Flag("bucket", "Expected bucket (optional verification)").String()
 	copyHtmlFooter = copyCmd.Flag("html-footer", "HTML snippet to append to copied file").String()
 
@@ -232,6 +233,7 @@ func runCopy(config *zipserver.Config) {
 
 	params := zipserver.CopyParams{
 		Key:            *copyKey,
+		DestKey:        *copyDestKey,
 		TargetName:     *copyTarget,
 		ExpectedBucket: *copyBucket,
 		HtmlFooter:     *copyHtmlFooter,

@@ -13,31 +13,40 @@ import (
 
 var copyLockTable = NewLockTable()
 
-// Copy copies a file from primary storage to a target storage
+// Copy copies a file from primary storage to a target storage, or within primary
+// storage if no target is specified. If DestKey is set, the file is written to
+// that key; otherwise it uses the source Key.
 func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
-	storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
-	if storageTargetConfig == nil {
-		return CopyResult{Err: fmt.Errorf("invalid target: %s", params.TargetName)}
+	if err := params.Validate(o.config); err != nil {
+		return CopyResult{Err: err}
 	}
 
-	if storageTargetConfig.Readonly {
-		return CopyResult{Err: fmt.Errorf("target %s is readonly", params.TargetName)}
-	}
+	destKey := params.DestKeyOrKey()
 
-	targetBucket := storageTargetConfig.Bucket
-
-	if params.ExpectedBucket != "" && params.ExpectedBucket != targetBucket {
-		return CopyResult{Err: fmt.Errorf("expected bucket does not match target bucket: %s != %s", params.ExpectedBucket, targetBucket)}
-	}
-
+	// Create source storage (always primary)
 	storage, err := NewGcsStorage(o.config)
 	if err != nil {
 		return CopyResult{Err: fmt.Errorf("failed to create source storage: %v", err)}
 	}
 
-	targetStorage, err := storageTargetConfig.NewStorageClient()
-	if err != nil {
-		return CopyResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
+	var targetStorage Storage
+	var targetBucket string
+	var targetLabel string
+
+	if params.TargetName == "" {
+		// Same-storage copy: reuse source storage for both read and write
+		targetStorage = storage
+		targetBucket = o.config.Bucket
+		targetLabel = "primary"
+	} else {
+		// Cross-storage copy: read from primary, write to target
+		storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
+		targetBucket = storageTargetConfig.Bucket
+		targetStorage, err = storageTargetConfig.NewStorageClient()
+		if err != nil {
+			return CopyResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
+		}
+		targetLabel = params.TargetName
 	}
 
 	startTime := time.Now()
@@ -73,23 +82,23 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 	}
 
 	if injected {
-		log.Print("Starting transfer (injected): [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", opts)
+		log.Print("Starting transfer (injected): [", targetLabel, "] ", targetBucket, "/", destKey, " ", opts)
 	} else {
-		log.Print("Starting transfer: [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", opts)
+		log.Print("Starting transfer: [", targetLabel, "] ", targetBucket, "/", destKey, " ", opts)
 	}
-	result, err := targetStorage.PutFile(ctx, targetBucket, params.Key, mReader, opts)
+	result, err := targetStorage.PutFile(ctx, targetBucket, destKey, mReader, opts)
 	if err != nil {
 		return CopyResult{Err: fmt.Errorf("failed to copy file: %v", err)}
 	}
 
 	globalMetrics.TotalCopiedFiles.Add(1)
-	log.Print("Transfer complete: [", params.TargetName, "] ", targetBucket, "/", params.Key,
+	log.Print("Transfer complete: [", targetLabel, "] ", targetBucket, "/", destKey,
 		", bytes read: ", formatBytes(float64(mReader.BytesRead)),
 		", duration: ", mReader.Duration.Seconds(),
 		", speed: ", formatBytes(mReader.TransferSpeed()), "/s")
 
 	return CopyResult{
-		Key:      params.Key,
+		Key:      destKey,
 		Duration: fmt.Sprintf("%.4fs", time.Since(startTime).Seconds()),
 		Size:     mReader.BytesRead,
 		Md5:      result.MD5,
@@ -153,8 +162,9 @@ func notifyError(callbackURL string, err error) error {
 	return notifyCallback(callbackURL, message)
 }
 
-// The copy handler will asynchronously copy a file from primary storage to the
-// storage specified by target
+// The copy handler asynchronously copies a file from primary storage to either:
+// - A target storage (when target is specified)
+// - A different key within primary storage (when only dest_key is specified)
 func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	if err := r.ParseForm(); err != nil {
 		return fmt.Errorf("failed to parse form: %w", err)
@@ -166,21 +176,30 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	callbackURL := params.Get("callback")
-
-	targetName, err := getParam(params, "target")
-	if err != nil {
-		return err
-	}
-
-	storageTargetConfig := globalConfig.GetStorageTargetByName(targetName)
-	if storageTargetConfig == nil {
-		return fmt.Errorf("invalid target: %s", targetName)
-	}
+	targetName := params.Get("target")
+	destKey := params.Get("dest_key")
 
 	expectedBucket, _ := getParam(params, "bucket")
 	htmlFooter := params.Get("html_footer")
 
-	lockKey := fmt.Sprintf("%s:%s", targetName, key)
+	copyParams := CopyParams{
+		Key:            key,
+		DestKey:        destKey,
+		TargetName:     targetName,
+		ExpectedBucket: expectedBucket,
+		HtmlFooter:     htmlFooter,
+	}
+	if err := copyParams.Validate(globalConfig); err != nil {
+		return err
+	}
+
+	// Use dest_key for lock if provided, otherwise use key
+	lockDestKey := copyParams.DestKeyOrKey()
+	lockTargetName := targetName
+	if lockTargetName == "" {
+		lockTargetName = "primary"
+	}
+	lockKey := fmt.Sprintf("%s:%s", lockTargetName, lockDestKey)
 
 	hasLock := copyLockTable.tryLockKey(lockKey)
 
@@ -190,13 +209,6 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	ops := NewOperations(globalConfig)
-	copyParams := CopyParams{
-		Key:            key,
-		TargetName:     targetName,
-		ExpectedBucket: expectedBucket,
-		HtmlFooter:     htmlFooter,
-	}
-
 	// sync codepath
 	if callbackURL == "" {
 		defer copyLockTable.releaseKey(lockKey)
