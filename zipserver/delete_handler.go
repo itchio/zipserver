@@ -241,8 +241,9 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 			Success     bool
 			TotalKeys   int
 			DeletedKeys int
+			Duration    string
 			Errors      []DeleteError
-		}{len(result.Errors) == 0, result.TotalKeys, result.DeletedKeys, result.Errors})
+		}{len(result.Errors) == 0, result.TotalKeys, result.DeletedKeys, result.Duration, result.Errors})
 	}
 
 	// async codepath
@@ -267,6 +268,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 			resValues.Add("Success", fmt.Sprintf("%t", len(result.Errors) == 0))
 			resValues.Add("TotalKeys", fmt.Sprintf("%d", result.TotalKeys))
 			resValues.Add("DeletedKeys", fmt.Sprintf("%d", result.DeletedKeys))
+			resValues.Add("Duration", result.Duration)
 
 			if len(result.Errors) > 0 {
 				errorsJSON, _ := json.Marshal(result.Errors)
