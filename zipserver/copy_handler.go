@@ -20,6 +20,10 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 		return CopyResult{Err: fmt.Errorf("invalid target: %s", params.TargetName)}
 	}
 
+	if storageTargetConfig.Readonly {
+		return CopyResult{Err: fmt.Errorf("target %s is readonly", params.TargetName)}
+	}
+
 	targetBucket := storageTargetConfig.Bucket
 
 	if params.ExpectedBucket != "" && params.ExpectedBucket != targetBucket {
