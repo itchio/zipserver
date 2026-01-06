@@ -51,10 +51,11 @@ var (
 	extractHtmlFooter   = extractCmd.Flag("html-footer", "HTML snippet to append to all index.html files").String()
 
 	// Copy command
-	copyCmd    = app.Command("copy", "Copy a file to target storage")
-	copyKey    = copyCmd.Flag("key", "Storage key to copy").Required().String()
-	copyTarget = copyCmd.Flag("target", "Target storage name").Required().String()
-	copyBucket = copyCmd.Flag("bucket", "Expected bucket (optional verification)").String()
+	copyCmd        = app.Command("copy", "Copy a file to target storage")
+	copyKey        = copyCmd.Flag("key", "Storage key to copy").Required().String()
+	copyTarget     = copyCmd.Flag("target", "Target storage name").Required().String()
+	copyBucket     = copyCmd.Flag("bucket", "Expected bucket (optional verification)").String()
+	copyHtmlFooter = copyCmd.Flag("html-footer", "HTML snippet to append to copied file").String()
 
 	// Delete command
 	deleteCmd    = app.Command("delete", "Delete files from storage")
@@ -233,6 +234,7 @@ func runCopy(config *zipserver.Config) {
 		Key:            *copyKey,
 		TargetName:     *copyTarget,
 		ExpectedBucket: *copyBucket,
+		HtmlFooter:     *copyHtmlFooter,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))
@@ -249,7 +251,8 @@ func runCopy(config *zipserver.Config) {
 		Duration string
 		Size     int64
 		Md5      string
-	}{true, result.Key, result.Duration, result.Size, result.Md5})
+		Injected bool `json:",omitempty"`
+	}{true, result.Key, result.Duration, result.Size, result.Md5, result.Injected})
 }
 
 func runDelete(config *zipserver.Config) {

@@ -162,6 +162,10 @@ Copy a file from primary storage to a target storage (e.g., S3).
 **CLI:**
 ```bash
 zipserver copy --key path/to/file.zip --target s3backup
+
+# With HTML footer injection
+zipserver copy --key games/123/index.html --target s3backup \
+  --html-footer '<script src="/analytics.js"></script>'
 ```
 
 **HTTP API:**
@@ -171,7 +175,20 @@ curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup"
 
 # Async mode (returns immediately, notifies callback when done)
 curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup&callback=http://example.com/done"
+
+# With HTML footer injection
+curl -X POST "http://localhost:8090/copy" \
+  -d "key=games/123/index.html" \
+  -d "target=s3backup" \
+  -d "html_footer=<script src=\"/analytics.js\"></script>"
 ```
+
+### HTML Footer Injection for Copy
+
+When copying files, you can inject an HTML snippet at the end of the file using the `html_footer` parameter.
+
+- Skips files with `Content-Encoding` set (e.g., gzip/brotli) to avoid corruption
+- The response includes `"Injected": true` when footer was appended
 
 ## Delete
 
@@ -333,7 +350,7 @@ curl -X POST "http://localhost:8090/delete" -d "keys[]=file.zip" -d "callback=-"
 |----------|----------------|
 | `/extract` | `ExtractedFiles[N][Key]`, `ExtractedFiles[N][Size]` for each file |
 | `/slurp` | (none beyond `Success=true`) |
-| `/copy` | `Key`, `Duration`, `Size`, `Md5` |
+| `/copy` | `Key`, `Duration`, `Size`, `Md5`, `Injected` (if html_footer was applied) |
 | `/delete` | `TotalKeys`, `DeletedKeys`, `Errors` (JSON array if any) |
 
 **On error**, callbacks include:

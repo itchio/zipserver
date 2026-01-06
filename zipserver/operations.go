@@ -31,6 +31,7 @@ type CopyParams struct {
 	Key            string // Storage key to copy
 	TargetName     string // Target storage name
 	ExpectedBucket string // Optional: expected bucket for validation
+	HtmlFooter     string // Optional: HTML to append to index.html files
 }
 
 // CopyResult contains the result of a copy operation
@@ -39,6 +40,7 @@ type CopyResult struct {
 	Duration string
 	Size     int64
 	Md5      string
+	Injected bool // true if HTML footer was injected
 	Err      error
 }
 

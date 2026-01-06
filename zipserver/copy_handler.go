@@ -44,21 +44,35 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 	}
 	defer reader.Close()
 
-	mReader := newMeasuredReader(reader)
-
 	contentType := headers.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 
+	contentEncoding := headers.Get("Content-Encoding")
+
+	// Check if we should inject HTML footer
+	injected := false
+	var finalReader io.Reader = reader
+	if params.HtmlFooter != "" && contentEncoding == "" {
+		finalReader = newAppendReader(reader, params.HtmlFooter)
+		injected = true
+	}
+
+	mReader := newMeasuredReader(finalReader)
+
 	opts := PutOptions{
 		ContentType:        contentType,
 		ContentDisposition: headers.Get("Content-Disposition"),
-		ContentEncoding:    headers.Get("Content-Encoding"),
+		ContentEncoding:    contentEncoding,
 		ACL:                ACLPublicRead,
 	}
 
-	log.Print("Starting transfer: [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", opts)
+	if injected {
+		log.Print("Starting transfer (injected): [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", opts)
+	} else {
+		log.Print("Starting transfer: [", params.TargetName, "] ", targetBucket, "/", params.Key, " ", opts)
+	}
 	result, err := targetStorage.PutFile(ctx, targetBucket, params.Key, mReader, opts)
 	if err != nil {
 		return CopyResult{Err: fmt.Errorf("failed to copy file: %v", err)}
@@ -75,6 +89,7 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 		Duration: fmt.Sprintf("%.4fs", time.Since(startTime).Seconds()),
 		Size:     mReader.BytesRead,
 		Md5:      result.MD5,
+		Injected: injected,
 	}
 }
 
@@ -159,6 +174,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	expectedBucket, _ := getParam(params, "bucket")
+	htmlFooter := params.Get("html_footer")
 
 	lockKey := fmt.Sprintf("%s:%s", targetName, key)
 
@@ -174,6 +190,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		Key:            key,
 		TargetName:     targetName,
 		ExpectedBucket: expectedBucket,
+		HtmlFooter:     htmlFooter,
 	}
 
 	// sync codepath
@@ -195,7 +212,8 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 			Duration string
 			Size     int64
 			Md5      string
-		}{true, result.Key, result.Duration, result.Size, result.Md5})
+			Injected bool `json:",omitempty"`
+		}{true, result.Key, result.Duration, result.Size, result.Md5, result.Injected})
 	}
 
 	// async codepath
@@ -224,6 +242,9 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 			resValues.Add("Duration", result.Duration)
 			resValues.Add("Size", fmt.Sprintf("%d", result.Size))
 			resValues.Add("Md5", result.Md5)
+			if result.Injected {
+				resValues.Add("Injected", "true")
+			}
 
 			notifyCallback(callbackURL, resValues)
 		}
