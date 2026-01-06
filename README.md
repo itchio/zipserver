@@ -363,7 +363,7 @@ curl -X POST "http://localhost:8090/delete" -d "keys[]=file.zip" -d "callback=-"
 
 | Endpoint | Success Fields |
 |----------|----------------|
-| `/extract` | `ExtractedFiles[N][Key]`, `ExtractedFiles[N][Size]` for each file |
+| `/extract` | `ExtractedFiles[N][Key]`, `ExtractedFiles[N][Size]`, `ExtractedFiles[N][Injected]` (if html_footer was applied) for each file |
 | `/slurp` | (none beyond `Success=true`) |
 | `/copy` | `Key`, `Duration`, `Size`, `Md5`, `Injected` (if html_footer was applied) |
 | `/delete` | `TotalKeys`, `DeletedKeys`, `Errors` (JSON array if any) |

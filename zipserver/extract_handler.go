@@ -227,6 +227,9 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 					extractedFile.Key)
 				resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Size])", idx+1),
 					fmt.Sprintf("%v", extractedFile.Size))
+				if extractedFile.Injected {
+					resValues.Add(fmt.Sprintf("ExtractedFiles[%d][Injected])", idx+1), "true")
+				}
 			}
 		}
 
