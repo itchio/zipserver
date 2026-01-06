@@ -51,12 +51,13 @@ var (
 	extractHtmlFooter   = extractCmd.Flag("html-footer", "HTML snippet to append to all index.html files").String()
 
 	// Copy command
-	copyCmd        = app.Command("copy", "Copy a file to target storage or different key")
-	copyKey        = copyCmd.Flag("key", "Storage key to copy").Required().String()
-	copyDestKey    = copyCmd.Flag("dest-key", "Destination key (defaults to source key)").String()
-	copyTarget     = copyCmd.Flag("target", "Target storage name").String()
-	copyBucket     = copyCmd.Flag("bucket", "Expected bucket (optional verification)").String()
-	copyHtmlFooter = copyCmd.Flag("html-footer", "HTML snippet to append to copied file").String()
+	copyCmd                     = app.Command("copy", "Copy a file to target storage or different key")
+	copyKey                     = copyCmd.Flag("key", "Storage key to copy").Required().String()
+	copyDestKey                 = copyCmd.Flag("dest-key", "Destination key (defaults to source key)").String()
+	copyTarget                  = copyCmd.Flag("target", "Target storage name").String()
+	copyBucket                  = copyCmd.Flag("bucket", "Expected bucket (optional verification)").String()
+	copyHtmlFooter              = copyCmd.Flag("html-footer", "HTML snippet to append to copied file").String()
+	copyStripContentDisposition = copyCmd.Flag("strip-content-disposition", "Remove Content-Disposition header from copied file").Bool()
 
 	// Delete command
 	deleteCmd    = app.Command("delete", "Delete files from storage")
@@ -232,11 +233,12 @@ func runCopy(config *zipserver.Config) {
 	ops := zipserver.NewOperations(config)
 
 	params := zipserver.CopyParams{
-		Key:            *copyKey,
-		DestKey:        *copyDestKey,
-		TargetName:     *copyTarget,
-		ExpectedBucket: *copyBucket,
-		HtmlFooter:     *copyHtmlFooter,
+		Key:                     *copyKey,
+		DestKey:                 *copyDestKey,
+		TargetName:              *copyTarget,
+		ExpectedBucket:          *copyBucket,
+		HtmlFooter:              *copyHtmlFooter,
+		StripContentDisposition: *copyStripContentDisposition,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.JobTimeout))

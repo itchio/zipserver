@@ -195,6 +195,47 @@ func TestCopy_PreservesHeaders(t *testing.T) {
 	})
 }
 
+func TestCopy_StripContentDisposition(t *testing.T) {
+	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
+		ctx := context.Background()
+		targetName := "mem-target-copy-strip-disposition"
+		defer ClearNamedMemStorage(targetName)
+
+		config.StorageTargets = []StorageConfig{{
+			Name:   targetName,
+			Type:   Mem,
+			Bucket: "target-bucket",
+		}}
+
+		testKey := "zipserver_test/copy_strip_disposition_test.html"
+		_, err := storage.PutFile(ctx, config.Bucket, testKey,
+			strings.NewReader("<html><body>test</body></html>"), PutOptions{
+				ContentType:        "text/html",
+				ContentDisposition: "attachment; filename=\"game.html\"",
+				ACL:                ACLPublicRead,
+			})
+		require.NoError(t, err)
+
+		ops := NewOperations(config)
+		result := ops.Copy(ctx, CopyParams{
+			Key:                     testKey,
+			TargetName:              targetName,
+			StripContentDisposition: true,
+		})
+
+		require.NoError(t, result.Err)
+
+		// Verify Content-Type preserved but Content-Disposition stripped
+		targetStorage := GetNamedMemStorage(targetName)
+		reader, headers, err := targetStorage.GetFile(ctx, "target-bucket", testKey)
+		require.NoError(t, err)
+		defer reader.Close()
+
+		assert.Equal(t, "text/html", headers.Get("Content-Type"))
+		assert.Empty(t, headers.Get("Content-Disposition"))
+	})
+}
+
 func TestCopy_WithHtmlFooter(t *testing.T) {
 	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
 		ctx := context.Background()

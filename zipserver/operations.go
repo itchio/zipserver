@@ -30,11 +30,12 @@ type ExtractResult struct {
 
 // CopyParams contains parameters for the copy operation
 type CopyParams struct {
-	Key            string // Storage key to copy
-	DestKey        string // Optional: destination key (defaults to Key if empty)
-	TargetName     string // Optional: target storage name (if empty, copies within primary storage)
-	ExpectedBucket string // Optional: expected bucket for validation
-	HtmlFooter     string // Optional: HTML to append to index.html files
+	Key                     string // Storage key to copy
+	DestKey                 string // Optional: destination key (defaults to Key if empty)
+	TargetName              string // Optional: target storage name (if empty, copies within primary storage)
+	ExpectedBucket          string // Optional: expected bucket for validation
+	HtmlFooter              string // Optional: HTML to append to index.html files
+	StripContentDisposition bool   // Optional: if true, don't copy Content-Disposition header
 }
 
 // DestKeyOrKey returns the destination key, defaulting to Key when DestKey is empty.

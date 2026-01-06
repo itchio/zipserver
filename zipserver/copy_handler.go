@@ -74,9 +74,14 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 
 	mReader := newMeasuredReader(finalReader)
 
+	contentDisposition := ""
+	if !params.StripContentDisposition {
+		contentDisposition = headers.Get("Content-Disposition")
+	}
+
 	opts := PutOptions{
 		ContentType:        contentType,
-		ContentDisposition: headers.Get("Content-Disposition"),
+		ContentDisposition: contentDisposition,
 		ContentEncoding:    contentEncoding,
 		ACL:                ACLPublicRead,
 	}
@@ -181,13 +186,15 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 
 	expectedBucket, _ := getParam(params, "bucket")
 	htmlFooter := params.Get("html_footer")
+	stripContentDisposition := params.Get("strip_content_disposition") == "true"
 
 	copyParams := CopyParams{
-		Key:            key,
-		DestKey:        destKey,
-		TargetName:     targetName,
-		ExpectedBucket: expectedBucket,
-		HtmlFooter:     htmlFooter,
+		Key:                     key,
+		DestKey:                 destKey,
+		TargetName:              targetName,
+		ExpectedBucket:          expectedBucket,
+		HtmlFooter:              htmlFooter,
+		StripContentDisposition: stripContentDisposition,
 	}
 	if err := copyParams.Validate(globalConfig); err != nil {
 		return err

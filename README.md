@@ -173,6 +173,10 @@ zipserver copy --key path/to/file.zip --target s3backup --dest-key renamed.zip
 # With HTML footer injection
 zipserver copy --key games/123/index.html --target s3backup \
   --html-footer '<script src="/analytics.js"></script>'
+
+# Strip Content-Disposition header (allow inline rendering instead of download)
+zipserver copy --key uploads/game.html --dest-key html5games/123/index.html \
+  --strip-content-disposition
 ```
 
 **HTTP API:**
@@ -194,6 +198,9 @@ curl -X POST "http://localhost:8090/copy" \
   -d "key=games/123/index.html" \
   -d "target=s3backup" \
   -d "html_footer=<script src=\"/analytics.js\"></script>"
+
+# Strip Content-Disposition header (allow inline rendering instead of download)
+curl "http://localhost:8090/copy?key=uploads/game.html&dest_key=html5games/123/index.html&strip_content_disposition=true"
 ```
 
 Either `target` or `dest_key` (or both) must be provided. When copying within the same storage (no `target`), `dest_key` must differ from `key`.
