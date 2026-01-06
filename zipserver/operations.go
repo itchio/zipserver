@@ -138,3 +138,17 @@ type SlurpParams struct {
 type SlurpResult struct {
 	Err error
 }
+
+// InfoParams contains parameters for the info operation
+type InfoParams struct {
+	Key        string // Storage key to get info for
+	TargetName string // Optional: target storage name (defaults to primary)
+}
+
+// InfoResult contains the result of an info operation
+type InfoResult struct {
+	Key     string
+	Bucket  string
+	Headers map[string][]string
+	Err     error
+}

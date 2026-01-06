@@ -42,3 +42,8 @@ type Storage interface {
 	PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error)
 	DeleteFile(ctx context.Context, bucket, key string) error
 }
+
+// HeadableStorage is a storage that supports HEAD requests for metadata
+type HeadableStorage interface {
+	HeadFile(ctx context.Context, bucket, key string) (http.Header, error)
+}

@@ -134,14 +134,17 @@ func (fs *MemStorage) GetReaderAt(ctx context.Context, bucket, key string, maxBy
 	return nil, 0, fmt.Errorf("%s: object not found", objectPath)
 }
 
-func (fs *MemStorage) getHeaders(bucket, key string) (http.Header, error) {
+// HeadFile retrieves metadata headers for a file without downloading the body
+func (fs *MemStorage) HeadFile(ctx context.Context, bucket, key string) (http.Header, error) {
 	fs.mutex.Lock()
 	defer fs.mutex.Unlock()
 
 	objectPath := fs.objectPath(bucket, key)
 
 	if obj, ok := fs.objects[objectPath]; ok {
-		return obj.headers, nil
+		headers := obj.headers.Clone()
+		headers.Set("Content-Length", fmt.Sprintf("%d", len(obj.data)))
+		return headers, nil
 	}
 
 	return nil, fmt.Errorf("%s: object not found", objectPath)

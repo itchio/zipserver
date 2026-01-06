@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -95,8 +94,8 @@ func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io
 	}, nil
 }
 
-// get some specific metadata for file
-func (c *S3Storage) HeadFile(ctx context.Context, bucket, key string) (url.Values, error) {
+// HeadFile retrieves metadata headers for a file without downloading the body
+func (c *S3Storage) HeadFile(ctx context.Context, bucket, key string) (http.Header, error) {
 	svc := s3.New(c.Session)
 	input := &s3.HeadObjectInput{
 		Bucket: aws.String(bucket),
@@ -108,20 +107,33 @@ func (c *S3Storage) HeadFile(ctx context.Context, bucket, key string) (url.Value
 		return nil, err
 	}
 
-	out := url.Values{}
-	if result.ChecksumSHA256 != nil {
-		out.Add("ChecksumSHA256", *result.ChecksumSHA256)
-	}
-
+	headers := http.Header{}
 	if result.ContentType != nil {
-		out.Add("ContentType", *result.ContentType)
+		headers.Set("Content-Type", *result.ContentType)
 	}
-
 	if result.ContentLength != nil {
-		out.Add("ContentLength", strconv.FormatInt(*result.ContentLength, 10))
+		headers.Set("Content-Length", strconv.FormatInt(*result.ContentLength, 10))
+	}
+	if result.ETag != nil {
+		headers.Set("ETag", *result.ETag)
+	}
+	if result.LastModified != nil {
+		headers.Set("Last-Modified", result.LastModified.Format(http.TimeFormat))
+	}
+	if result.ContentEncoding != nil {
+		headers.Set("Content-Encoding", *result.ContentEncoding)
+	}
+	if result.ContentDisposition != nil {
+		headers.Set("Content-Disposition", *result.ContentDisposition)
+	}
+	if result.CacheControl != nil {
+		headers.Set("Cache-Control", *result.CacheControl)
+	}
+	if result.ChecksumSHA256 != nil {
+		headers.Set("x-amz-checksum-sha256", *result.ChecksumSHA256)
 	}
 
-	return out, nil
+	return headers, nil
 }
 
 func (c *S3Storage) DeleteFile(ctx context.Context, bucket, key string) error {

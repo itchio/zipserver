@@ -64,6 +64,11 @@ var (
 	deleteKeys   = deleteCmd.Flag("key", "Storage keys to delete (can be specified multiple times)").Required().Strings()
 	deleteTarget = deleteCmd.Flag("target", "Target storage name (if omitted, delete from primary storage within ExtractPrefix)").String()
 
+	// Info command
+	infoCmd    = app.Command("info", "Get metadata/headers for a file in storage")
+	infoKey    = infoCmd.Flag("key", "Storage key to get info for").Required().String()
+	infoTarget = infoCmd.Flag("target", "Target storage name").String()
+
 	// List command
 	listCmd  = app.Command("list", "List files in a zip archive")
 	listKey  = listCmd.Flag("key", "Storage key of the zip file").String()
@@ -144,6 +149,8 @@ func main() {
 		runCopy(config)
 	case deleteCmd.FullCommand():
 		runDelete(config)
+	case infoCmd.FullCommand():
+		runInfo(config)
 	case listCmd.FullCommand():
 		runList(config)
 	case slurpCmd.FullCommand():
@@ -281,6 +288,42 @@ func runDelete(config *zipserver.Config) {
 		DeletedKeys int
 		Errors      []zipserver.DeleteError `json:",omitempty"`
 	}{len(result.Errors) == 0, result.TotalKeys, result.DeletedKeys, result.Errors})
+}
+
+func runInfo(config *zipserver.Config) {
+	ops := zipserver.NewOperations(config)
+
+	params := zipserver.InfoParams{
+		Key:        *infoKey,
+		TargetName: *infoTarget,
+	}
+
+	log.Println("Storage key:", *infoKey)
+	if *infoTarget != "" {
+		targetConfig := config.GetStorageTargetByName(*infoTarget)
+		if targetConfig == nil {
+			log.Fatalf("invalid target: %s", *infoTarget)
+		}
+		log.Println("Target:", *infoTarget)
+		log.Println("Bucket:", targetConfig.Bucket)
+	} else {
+		log.Println("Bucket:", config.Bucket)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.FileGetTimeout))
+	defer cancel()
+
+	result := ops.Info(ctx, params)
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+
+	outputJSON(struct {
+		Success bool
+		Key     string
+		Bucket  string
+		Headers map[string][]string
+	}{true, result.Key, result.Bucket, result.Headers})
 }
 
 func runList(config *zipserver.Config) {

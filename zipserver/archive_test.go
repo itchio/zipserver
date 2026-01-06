@@ -121,7 +121,7 @@ func (zl *zipLayout) Check(t *testing.T, storage *MemStorage, bucket, prefix str
 			assert.NoError(t, err)
 			assert.EqualValues(t, data, entry.data)
 
-			h, err := storage.getHeaders(bucket, path)
+			h, err := storage.HeadFile(ctx, bucket, path)
 			assert.NoError(t, err)
 			assert.EqualValues(t, entry.expectedMimeType, h.Get("content-type"))
 			assert.EqualValues(t, "public-read", h.Get("x-acl"))

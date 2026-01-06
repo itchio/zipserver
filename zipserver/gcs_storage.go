@@ -102,6 +102,32 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 	return trackedBody, res.Header, nil
 }
 
+// HeadFile retrieves metadata headers for a file without downloading the body
+func (c *GcsStorage) HeadFile(ctx context.Context, bucket, key string) (http.Header, error) {
+	httpClient, err := c.httpClient()
+	if err != nil {
+		return nil, err
+	}
+
+	url := c.url(bucket, key, "HEAD")
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, errors.New(res.Status + " " + url)
+	}
+
+	return res.Header, nil
+}
+
 // PutFile uploads a file to GCS with the given options
 func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error) {
 	httpClient, err := c.httpClient()
