@@ -75,9 +75,10 @@ func writeJSONMessage(w http.ResponseWriter, msg interface{}) error {
 
 func writeJSONError(w http.ResponseWriter, kind string, err error) error {
 	return writeJSONMessage(w, struct {
-		Type  string
-		Error string
-	}{kind, err.Error()})
+		Success bool
+		Type    string
+		Error   string
+	}{false, kind, err.Error()})
 }
 
 func versionHandler(w http.ResponseWriter, r *http.Request) error {
