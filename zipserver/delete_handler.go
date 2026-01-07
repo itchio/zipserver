@@ -115,6 +115,11 @@ func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOper
 	deletedCount := 0
 	var deleteErrors []DeleteError
 
+	displayName := targetName
+	if displayName == "" {
+		displayName = "primary"
+	}
+
 	for activeWorkers > 0 {
 		select {
 		case result := <-results:
@@ -126,6 +131,7 @@ func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOper
 			} else {
 				deletedCount++
 				globalMetrics.TotalDeletedFiles.Add(1)
+				log.Printf("Deleted [%s] %s", displayName, result.Key)
 			}
 		case <-done:
 			activeWorkers--
@@ -134,10 +140,6 @@ func (o *Operations) Delete(ctx context.Context, params DeleteParams) DeleteOper
 
 	close(results)
 
-	displayName := targetName
-	if displayName == "" {
-		displayName = "primary"
-	}
 	duration := time.Since(startTime)
 	log.Printf("Delete complete: [%s] deleted %d/%d files, duration: %.4fs", displayName, deletedCount, len(params.Keys), duration.Seconds())
 
