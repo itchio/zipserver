@@ -193,6 +193,9 @@ curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup&dest_key=r
 # Async mode (returns immediately, notifies callback when done)
 curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup&callback=http://example.com/done"
 
+# Hybrid mode (waits up to sync_timeout ms, then falls back to async + callback)
+curl "http://localhost:8090/copy?key=path/to/file.zip&target=s3backup&callback=http://example.com/done&sync_timeout=500"
+
 # With HTML footer injection
 curl -X POST "http://localhost:8090/copy" \
   -d "key=games/123/index.html" \
@@ -204,6 +207,8 @@ curl "http://localhost:8090/copy?key=uploads/game.html&dest_key=html5games/123/i
 ```
 
 Either `target` or `dest_key` (or both) must be provided. When copying within the same storage (no `target`), `dest_key` must differ from `key`.
+
+When using `sync_timeout`, you must also provide `callback`. If the copy finishes within `sync_timeout` (milliseconds), the response is synchronous success and no callback is sent. If it exceeds the timeout, the response is async (`{"Processing": true, "Async": true}`) and the callback is sent when the copy completes.
 
 ### HTML Footer Injection for Copy
 
@@ -401,6 +406,7 @@ curl "http://localhost:8090/slurp?url=https://example.com/file.zip&key=uploads/f
 - The callback timeout is configurable via `AsyncNotificationTimeout` in the config
 - If your callback URL returns a non-200 status, the error is logged but the operation result is not retried
 - Operations that are already in progress for the same key return `{"Processing": true}` without the `Async` field
+- For `/copy`, `sync_timeout` (milliseconds) enables a hybrid mode: the server waits up to that duration before switching to async and notifying the callback. If it completes within the timeout, no callback is sent.
 
 ## GCS Authentication and Permissions
 

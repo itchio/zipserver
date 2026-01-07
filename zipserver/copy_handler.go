@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -188,6 +189,25 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	htmlFooter := params.Get("html_footer")
 	stripContentDisposition := params.Get("strip_content_disposition") == "true"
 
+	// Parse sync_timeout parameter (in milliseconds)
+	var syncTimeout time.Duration
+	syncTimeoutStr := params.Get("sync_timeout")
+	if syncTimeoutStr != "" {
+		syncTimeoutMs, err := strconv.ParseInt(syncTimeoutStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid sync_timeout value: %s", syncTimeoutStr)
+		}
+		if syncTimeoutMs <= 0 {
+			return fmt.Errorf("sync_timeout must be positive, got: %d", syncTimeoutMs)
+		}
+		syncTimeout = time.Duration(syncTimeoutMs) * time.Millisecond
+
+		// Cap at JobTimeout
+		if syncTimeout > time.Duration(globalConfig.JobTimeout) {
+			syncTimeout = time.Duration(globalConfig.JobTimeout)
+		}
+	}
+
 	copyParams := CopyParams{
 		Key:                     key,
 		DestKey:                 destKey,
@@ -198,6 +218,11 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 	if err := copyParams.Validate(globalConfig); err != nil {
 		return err
+	}
+
+	// Validate: sync_timeout requires callback
+	if syncTimeout > 0 && callbackURL == "" {
+		return fmt.Errorf("sync_timeout requires a callback parameter")
 	}
 
 	// Use dest_key for lock if provided, otherwise use key
@@ -237,6 +262,76 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 			Md5      string
 			Injected bool `json:",omitempty"`
 		}{true, result.Key, result.Duration, result.Size, result.Md5, result.Injected})
+	}
+
+	// hybrid codepath (callback + sync_timeout)
+	if syncTimeout > 0 {
+		resultChan := make(chan CopyResult, 1)
+		jobCtx, jobCancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
+
+		// Start the copy operation in a goroutine
+		go func() {
+			result := ops.Copy(jobCtx, copyParams)
+			resultChan <- result
+		}()
+
+		select {
+		case result := <-resultChan:
+			// Completed within timeout - return sync response
+			jobCancel()
+			copyLockTable.releaseKey(lockKey)
+
+			if result.Err != nil {
+				globalMetrics.TotalErrors.Add(1)
+				return writeJSONError(w, "CopyError", result.Err)
+			}
+
+			return writeJSONMessage(w, struct {
+				Success  bool
+				Key      string
+				Duration string
+				Size     int64
+				Md5      string
+				Injected bool `json:",omitempty"`
+			}{true, result.Key, result.Duration, result.Size, result.Md5, result.Injected})
+
+		case <-time.After(syncTimeout):
+			// Timeout expired - switch to async mode
+			go func() {
+				defer jobCancel()
+				defer copyLockTable.releaseKey(lockKey)
+
+				result := <-resultChan
+
+				if result.Err != nil {
+					if callbackURL == "-" {
+						globalMetrics.TotalErrors.Add(1)
+						log.Printf("CopyError async (callback=-): %v", result.Err)
+						return
+					}
+					notifyError(callbackURL, result.Err)
+					return
+				}
+
+				if callbackURL != "-" {
+					resValues := url.Values{}
+					resValues.Add("Success", "true")
+					resValues.Add("Key", result.Key)
+					resValues.Add("Duration", result.Duration)
+					resValues.Add("Size", fmt.Sprintf("%d", result.Size))
+					resValues.Add("Md5", result.Md5)
+					if result.Injected {
+						resValues.Add("Injected", "true")
+					}
+					notifyCallback(callbackURL, resValues)
+				}
+			}()
+
+			return writeJSONMessage(w, struct {
+				Processing bool
+				Async      bool
+			}{true, true})
+		}
 	}
 
 	// async codepath

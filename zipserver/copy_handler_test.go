@@ -2,6 +2,7 @@ package zipserver
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -531,4 +532,197 @@ func TestCopyHandler_InvalidTarget(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid target")
+}
+
+func TestCopyHandler_SyncTimeoutRequiresCallback(t *testing.T) {
+	oldConfig := globalConfig
+	globalConfig = copyHandlerTestConfig()
+	defer func() { globalConfig = oldConfig }()
+
+	form := url.Values{}
+	form.Set("key", "test/file.txt")
+	form.Set("dest_key", "test/dest.txt")
+	form.Set("target", "test-target")
+	form.Set("sync_timeout", "1000")
+	// No callback parameter
+
+	req := httptest.NewRequest(http.MethodPost, "/copy", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	err := copyHandler(w, req)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sync_timeout requires a callback")
+}
+
+func TestCopyHandler_InvalidSyncTimeout(t *testing.T) {
+	oldConfig := globalConfig
+	globalConfig = copyHandlerTestConfig()
+	defer func() { globalConfig = oldConfig }()
+
+	tests := []struct {
+		name        string
+		syncTimeout string
+		expectedErr string
+	}{
+		{"negative", "-100", "sync_timeout must be positive"},
+		{"zero", "0", "sync_timeout must be positive"},
+		{"non-integer", "abc", "invalid sync_timeout value"},
+		{"float", "100.5", "invalid sync_timeout value"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			form := url.Values{}
+			form.Set("key", "test/file.txt")
+			form.Set("dest_key", "test/dest.txt")
+			form.Set("target", "test-target")
+			form.Set("callback", "http://example.com/callback")
+			form.Set("sync_timeout", tt.syncTimeout)
+
+			req := httptest.NewRequest(http.MethodPost, "/copy", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+
+			err := copyHandler(w, req)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.expectedErr)
+		})
+	}
+}
+
+func TestCopyHandler_HybridFastCompletion(t *testing.T) {
+	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
+		ctx := context.Background()
+		targetName := "mem-target-hybrid-fast"
+		defer ClearNamedMemStorage(targetName)
+
+		config.StorageTargets = []StorageConfig{{
+			Name:   targetName,
+			Type:   Mem,
+			Bucket: "target-bucket",
+		}}
+
+		oldConfig := globalConfig
+		globalConfig = config
+		defer func() { globalConfig = oldConfig }()
+
+		// Upload source file to GCS
+		testContent := "test content for hybrid fast"
+		testKey := "zipserver_test/hybrid_fast_test.txt"
+		_, err := storage.PutFile(ctx, config.Bucket, testKey,
+			strings.NewReader(testContent), PutOptions{ContentType: "text/plain", ACL: ACLPublicRead})
+		require.NoError(t, err)
+
+		// Callback server (should NOT be called for fast completion)
+		callbackCalled := make(chan bool, 1)
+		callbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callbackCalled <- true
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer callbackServer.Close()
+
+		form := url.Values{}
+		form.Set("key", testKey)
+		form.Set("target", targetName)
+		form.Set("callback", callbackServer.URL)
+		form.Set("sync_timeout", "5000") // 5 seconds - plenty of time
+
+		req := httptest.NewRequest(http.MethodPost, "/copy", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		err = copyHandler(w, req)
+		require.NoError(t, err)
+
+		// Verify sync response (Success=true, not Processing=true)
+		var resp struct {
+			Success bool
+			Key     string
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.True(t, resp.Success, "should return sync success response")
+		assert.Equal(t, testKey, resp.Key)
+
+		// Verify callback was NOT called
+		select {
+		case <-callbackCalled:
+			t.Fatal("callback should not be called for fast completion")
+		case <-time.After(100 * time.Millisecond):
+			// Good - callback not called
+		}
+	})
+}
+
+func TestCopyHandler_HybridSlowCompletion(t *testing.T) {
+	withGoogleCloudStorage(t, func(storage Storage, config *Config) {
+		ctx := context.Background()
+		targetName := "mem-target-hybrid-slow"
+		defer ClearNamedMemStorage(targetName)
+
+		config.StorageTargets = []StorageConfig{{
+			Name:   targetName,
+			Type:   Mem,
+			Bucket: "target-bucket",
+		}}
+		config.JobTimeout = Duration(10 * time.Second)
+		config.AsyncNotificationTimeout = Duration(10 * time.Second)
+
+		oldConfig := globalConfig
+		globalConfig = config
+		defer func() { globalConfig = oldConfig }()
+
+		// Upload source file to GCS
+		testContent := "test content for hybrid slow"
+		testKey := "zipserver_test/hybrid_slow_test.txt"
+		_, err := storage.PutFile(ctx, config.Bucket, testKey,
+			strings.NewReader(testContent), PutOptions{ContentType: "text/plain", ACL: ACLPublicRead})
+		require.NoError(t, err)
+
+		// Set up target storage with delay to simulate slow operation
+		targetStorage := GetNamedMemStorage(targetName)
+		targetStorage.putDelay = 500 * time.Millisecond
+
+		// Callback server to capture async notification
+		callbackReceived := make(chan url.Values, 1)
+		callbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, r.ParseForm())
+			callbackReceived <- r.Form
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer callbackServer.Close()
+
+		form := url.Values{}
+		form.Set("key", testKey)
+		form.Set("target", targetName)
+		form.Set("callback", callbackServer.URL)
+		form.Set("sync_timeout", "100") // 100ms - operation will exceed this due to 500ms delay
+
+		req := httptest.NewRequest(http.MethodPost, "/copy", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+
+		err = copyHandler(w, req)
+		require.NoError(t, err)
+
+		// Verify async response
+		var resp struct {
+			Processing bool
+			Async      bool
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.True(t, resp.Processing, "should return async processing response")
+		assert.True(t, resp.Async, "should indicate async mode")
+
+		// Wait for callback
+		select {
+		case callbackData := <-callbackReceived:
+			assert.Equal(t, "true", callbackData.Get("Success"))
+			assert.Equal(t, testKey, callbackData.Get("Key"))
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout waiting for callback")
+		}
+	})
 }
