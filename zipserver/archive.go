@@ -512,6 +512,39 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 		expectedSize += uint64(len(htmlFooter))
 		reader = newAppendReader(reader, htmlFooter)
 		injected = true
+	}
+
+	// Pre-compress if configured and applicable
+	if resource.contentEncoding == "" && shouldPreCompress(key, expectedSize, a.Config) {
+		// Use LimitReader to enforce expectedSize limit and prevent memory exhaustion
+		// from malicious zips that lie about UncompressedSize64
+		limitedForCompress := io.LimitReader(reader, int64(expectedSize)+1)
+		data, err := io.ReadAll(limitedForCompress)
+		if err != nil {
+			return UploadFileResult{Error: err, Key: key}
+		}
+
+		// Check if we read more than expected (zip lied about size)
+		if uint64(len(data)) > expectedSize {
+			return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size"), Key: key}
+		}
+
+		compressedData, err := gzipCompress(data)
+		if err != nil {
+			return UploadFileResult{Error: err, Key: key}
+		}
+
+		// Only use compressed if actually smaller
+		if len(compressedData) < len(data) {
+			reader = bytes.NewReader(compressedData)
+			resource.contentEncoding = "gzip"
+			expectedSize = uint64(len(compressedData))
+		} else {
+			reader = bytes.NewReader(data)
+		}
+	}
+
+	if injected {
 		log.Printf("Sending: %s (injected)", resource)
 	} else {
 		log.Printf("Sending: %s", resource)
