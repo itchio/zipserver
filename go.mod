@@ -5,6 +5,8 @@ go 1.24.0
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/aws/aws-sdk-go v1.55.8
+	github.com/bmatcuk/doublestar/v4 v4.9.1
+	github.com/klauspost/compress v1.18.3
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/oauth2 v0.33.0
 )
@@ -12,7 +14,6 @@ require (
 require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
-	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

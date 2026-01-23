@@ -1,7 +1,7 @@
 package zipserver
 
 import (
-	"archive/zip"
+	"github.com/klauspost/compress/zip"
 	"bytes"
 	"testing"
 )
