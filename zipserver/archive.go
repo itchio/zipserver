@@ -1,13 +1,13 @@
 package zipserver
 
 import (
-	"github.com/klauspost/compress/zip"
 	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/klauspost/compress/zip"
 	"io"
 	"log"
 	"mime"
@@ -515,32 +515,33 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 	}
 
 	// Pre-compress if configured and applicable
-	if resource.contentEncoding == "" && shouldPreCompress(key, expectedSize, a.Config) {
-		// Use LimitReader to enforce expectedSize limit and prevent memory exhaustion
-		// from malicious zips that lie about UncompressedSize64
-		limitedForCompress := io.LimitReader(reader, int64(expectedSize)+1)
-		data, err := io.ReadAll(limitedForCompress)
+	if resource.contentEncoding == "" && shouldPreCompress(resource.key, expectedSize, a.Config) {
+		compressedFile, usedCompressed, err := preCompressStreamToTemp(ctx, reader, expectedSize, a.Config)
 		if err != nil {
-			return UploadFileResult{Error: err, Key: key}
+			if errors.Is(err, ErrLimitExceeded) {
+				return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size (max %d bytes)", expectedSize), Key: resource.key}
+			}
+			return UploadFileResult{Error: err, Key: resource.key}
 		}
 
-		// Check if we read more than expected (zip lied about size)
-		if uint64(len(data)) > expectedSize {
-			return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size"), Key: key}
-		}
-
-		compressedData, err := gzipCompress(data)
-		if err != nil {
-			return UploadFileResult{Error: err, Key: key}
-		}
-
-		// Only use compressed if actually smaller
-		if len(compressedData) < len(data) {
-			reader = bytes.NewReader(compressedData)
+		if usedCompressed {
+			defer compressedFile.Cleanup()
+			reader = compressedFile.Reader
 			resource.contentEncoding = "gzip"
-			expectedSize = uint64(len(compressedData))
+			expectedSize = compressedFile.Size
 		} else {
-			reader = bytes.NewReader(data)
+			// Compression attempt consumed the stream. Re-open the zip entry and re-apply
+			// HTML footer injection so we can stream the original bytes to storage.
+			retryReaderCloser, err := file.Open()
+			if err != nil {
+				return UploadFileResult{Error: err, Key: resource.key}
+			}
+			defer retryReaderCloser.Close()
+
+			reader = retryReaderCloser
+			if injected {
+				reader = newAppendReader(reader, htmlFooter)
+			}
 		}
 	}
 

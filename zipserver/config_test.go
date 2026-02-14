@@ -84,6 +84,7 @@ func Test_Config(t *testing.T) {
 	assert.Equal(t, 1*time.Minute, time.Duration(c.FileGetTimeout))
 	assert.Equal(t, 1*time.Minute, time.Duration(c.FilePutTimeout))
 	assert.Equal(t, 5*time.Second, time.Duration(c.AsyncNotificationTimeout))
+	assert.Equal(t, defaultPreCompressMaxConcurrent, c.PreCompressMaxConcurrent)
 
 	assert.True(t, c.String() != "")
 }

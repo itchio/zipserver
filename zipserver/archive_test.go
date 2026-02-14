@@ -1,12 +1,12 @@
 package zipserver
 
 import (
-	"github.com/klauspost/compress/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/klauspost/compress/zip"
 	"io"
 	"io/fs"
 	"math/rand"

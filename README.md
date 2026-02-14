@@ -25,6 +25,17 @@ Create a config file `zipserver.json`:
 
 More config settings can be found in `zipserver/config.go`.
 
+### Pre-compression settings
+
+Pre-compression is disabled by default. When enabled, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller.
+
+| Config field | Description | Default |
+| --- | --- | --- |
+| `PreCompressEnabled` | Enable gzip pre-compression during extract. | `false` |
+| `PreCompressMinSize` | Minimum file size in bytes before attempting compression. | `1024` |
+| `PreCompressMaxConcurrent` | Maximum number of files pre-compressed at once across the process. | `1` |
+| `PreCompressExtensions` | File extensions eligible for pre-compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck"]` |
+
 ## Limits
 
 All limits are configured in `zipserver.json` using the names below. For `extract` and `list`, you can override limits per request via HTTP query parameters. CLI overrides are available for `extract` via flags, and `--threads` can override `ExtractionThreads`. A value of `0` means "unbounded" for all limits except `ExtractionThreads` (which uses `GOMAXPROCS`, and is forced to at least 1).

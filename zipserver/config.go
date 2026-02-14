@@ -184,9 +184,10 @@ type Config struct {
 	StorageTargets []StorageConfig `json:",omitempty"`
 
 	// Pre-compression settings
-	PreCompressEnabled    bool     `json:",omitempty"`
-	PreCompressExtensions []string `json:",omitempty"`
-	PreCompressMinSize    int64    `json:",omitempty"`
+	PreCompressEnabled       bool     `json:",omitempty"`
+	PreCompressExtensions    []string `json:",omitempty"`
+	PreCompressMinSize       int64    `json:",omitempty"`
+	PreCompressMaxConcurrent int      `json:",omitempty"`
 
 	// Version info (set at runtime, not from config file)
 	Version   string `json:"-"`
@@ -219,8 +220,9 @@ var defaultConfig = Config{
 	FilePutTimeout:           Duration(1 * time.Minute),
 	AsyncNotificationTimeout: Duration(5 * time.Second),
 
-	PreCompressMinSize:    1024, // 1KB minimum
-	PreCompressExtensions: []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck"},
+	PreCompressMinSize:       1024, // 1KB minimum
+	PreCompressExtensions:    []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck"},
+	PreCompressMaxConcurrent: defaultPreCompressMaxConcurrent,
 }
 
 // Duration adds JSON (de)serialization to time.Duration.
