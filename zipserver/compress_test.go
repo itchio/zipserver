@@ -3,7 +3,10 @@ package zipserver
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
+	"errors"
 	"io"
+	"math"
 	"testing"
 )
 
@@ -21,6 +24,13 @@ func TestShouldPreCompress(t *testing.T) {
 		config   *Config
 		want     bool
 	}{
+		{
+			name:     "nil config",
+			filename: "test.html",
+			size:     2000,
+			config:   nil,
+			want:     false,
+		},
 		{
 			name:     "feature disabled",
 			filename: "test.html",
@@ -117,6 +127,17 @@ func TestShouldPreCompress(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "configured extension without dot",
+			filename: "index.html",
+			size:     2000,
+			config: &Config{
+				PreCompressEnabled:    true,
+				PreCompressMinSize:    1024,
+				PreCompressExtensions: []string{"html"},
+			},
+			want: true,
+		},
+		{
 			name:     "nested path with matching extension",
 			filename: "assets/scripts/main.js",
 			size:     2000,
@@ -134,6 +155,13 @@ func TestShouldPreCompress(t *testing.T) {
 			name:     "one byte below minimum size",
 			filename: "test.html",
 			size:     1023,
+			config:   baseConfig,
+			want:     false,
+		},
+		{
+			name:     "too large to safely pre-compress",
+			filename: "test.html",
+			size:     uint64(math.MaxInt64),
 			config:   baseConfig,
 			want:     false,
 		},
@@ -211,6 +239,74 @@ func TestGzipCompress(t *testing.T) {
 
 		if len(decompressed) != 0 {
 			t.Errorf("decompressed empty input should be empty, got %d bytes", len(decompressed))
+		}
+	})
+}
+
+func TestPreCompressStreamToTemp(t *testing.T) {
+	t.Run("returns compressed temp file when smaller", func(t *testing.T) {
+		input := bytes.Repeat([]byte("Hello, World! This is compressible data. "), 200)
+
+		compressed, used, err := preCompressStreamToTemp(
+			context.Background(),
+			bytes.NewReader(input),
+			uint64(len(input)),
+			&Config{PreCompressMaxConcurrent: 1},
+		)
+		if err != nil {
+			t.Fatalf("preCompressStreamToTemp failed: %v", err)
+		}
+		if !used {
+			t.Fatalf("expected compression to be used")
+		}
+		defer compressed.Cleanup()
+
+		reader, err := gzip.NewReader(compressed.Reader)
+		if err != nil {
+			t.Fatalf("gzip.NewReader failed: %v", err)
+		}
+		defer reader.Close()
+
+		decompressed, err := io.ReadAll(reader)
+		if err != nil {
+			t.Fatalf("io.ReadAll failed: %v", err)
+		}
+		if !bytes.Equal(decompressed, input) {
+			t.Fatalf("decompressed data mismatch")
+		}
+	})
+
+	t.Run("skips when compressed output is larger", func(t *testing.T) {
+		input := []byte{}
+
+		compressed, used, err := preCompressStreamToTemp(
+			context.Background(),
+			bytes.NewReader(input),
+			uint64(len(input)),
+			&Config{PreCompressMaxConcurrent: 1},
+		)
+		if err != nil {
+			t.Fatalf("preCompressStreamToTemp failed: %v", err)
+		}
+		if used {
+			t.Fatalf("expected compression to be skipped")
+		}
+		if compressed != nil {
+			t.Fatalf("expected nil compressed file when skipped")
+		}
+	})
+
+	t.Run("returns limit exceeded error when source exceeds expected size", func(t *testing.T) {
+		input := bytes.Repeat([]byte("x"), 2048)
+
+		_, _, err := preCompressStreamToTemp(
+			context.Background(),
+			bytes.NewReader(input),
+			128,
+			&Config{PreCompressMaxConcurrent: 1},
+		)
+		if !errors.Is(err, ErrLimitExceeded) {
+			t.Fatalf("expected ErrLimitExceeded, got %v", err)
 		}
 	})
 }
