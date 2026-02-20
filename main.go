@@ -110,7 +110,7 @@ func must(err error) {
 	log.Fatal(err)
 }
 
-func outputJSON(v interface{}) {
+func outputJSON(v any) {
 	blob, err := json.Marshal(v)
 	if err != nil {
 		log.Fatal("Failed to marshal JSON:", err)
