@@ -1,14 +1,14 @@
 module github.com/itchio/zipserver
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/aws/aws-sdk-go v1.55.8
-	github.com/bmatcuk/doublestar/v4 v4.9.1
-	github.com/klauspost/compress v1.18.3
-	github.com/stretchr/testify v1.10.0
-	golang.org/x/oauth2 v0.33.0
+	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/klauspost/compress v1.18.6
+	github.com/stretchr/testify v1.11.1
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
