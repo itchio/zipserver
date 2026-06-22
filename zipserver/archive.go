@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -217,12 +218,7 @@ func shouldIncludeFileByList(fname string, onlyFiles []string) bool {
 	if len(onlyFiles) == 0 {
 		return true
 	}
-	for _, allowed := range onlyFiles {
-		if fname == allowed {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(onlyFiles, fname)
 }
 
 // UploadFileTask contains the information needed to extract a single file from a .zip
@@ -361,10 +357,7 @@ func (a *ArchiveExtractor) sendZipExtracted(
 	results := make(chan UploadFileResult)
 	threads := limits.ExtractionThreads
 	if threads < 1 {
-		threads = runtime.GOMAXPROCS(0)
-		if threads < 1 {
-			threads = 1
-		}
+		threads = max(runtime.GOMAXPROCS(0), 1)
 	}
 
 	done := make(chan struct{}, threads)
@@ -474,8 +467,8 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 		resource.contentEncoding = "gzip"
 
 		// try to see if there's a real extension hidden beneath
-		if strings.HasSuffix(key, ".gz") {
-			realMimeType := mime.TypeByExtension(path.Ext(strings.TrimSuffix(key, ".gz")))
+		if before, ok := strings.CutSuffix(key, ".gz"); ok {
+			realMimeType := mime.TypeByExtension(path.Ext(before))
 
 			if realMimeType != "" {
 				mimeType = realMimeType

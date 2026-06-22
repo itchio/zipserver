@@ -197,14 +197,14 @@ func TestDelete_MultipleKeys(t *testing.T) {
 	storage := GetNamedMemStorage(targetName)
 
 	// Create 10 files
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		key := fmt.Sprintf("file%d.txt", i)
 		storage.PutFile(ctx, "test-bucket", key, bytes.NewReader([]byte("content")), PutOptions{})
 	}
 
 	// Delete all 10
 	keys := make([]string, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		keys[i] = fmt.Sprintf("file%d.txt", i)
 	}
 

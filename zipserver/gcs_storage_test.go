@@ -1,11 +1,11 @@
 package zipserver
 
 import (
-	"github.com/klauspost/compress/zip"
 	"bytes"
 	"context"
 	"crypto/md5"
 	"fmt"
+	"github.com/klauspost/compress/zip"
 	"io"
 	"os"
 	"strings"
@@ -104,7 +104,7 @@ func TestGetReaderAtRangeEfficiency(t *testing.T) {
 		zw := zip.NewWriter(&buf)
 
 		// Add files with Store (no compression) to ensure predictable size
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			header := &zip.FileHeader{
 				Name:   fmt.Sprintf("file%d.bin", i),
 				Method: zip.Store, // No compression

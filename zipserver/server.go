@@ -63,7 +63,7 @@ func getIntParam(params url.Values, name string) (int, error) {
 	return valInt, nil
 }
 
-func writeJSONMessage(w http.ResponseWriter, msg interface{}) error {
+func writeJSONMessage(w http.ResponseWriter, msg any) error {
 	blob, err := json.Marshal(msg)
 	if err != nil {
 		return err
