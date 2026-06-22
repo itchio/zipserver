@@ -174,6 +174,7 @@ type Config struct {
 	ExtractionThreads int
 	MaxInputZipSize   uint64
 	MaxListFiles      int
+	MaxPeekBytes      uint64 `json:",omitempty"`
 
 	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
 	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object
@@ -215,6 +216,7 @@ var defaultConfig = Config{
 	ExtractionThreads: 4,
 	MaxInputZipSize:   1024 * 1024 * 100,
 	MaxListFiles:      50000,
+	MaxPeekBytes:      1024 * 1024,
 
 	JobTimeout:               Duration(5 * time.Minute),
 	FileGetTimeout:           Duration(1 * time.Minute),

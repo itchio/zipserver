@@ -127,6 +127,8 @@ func StartZipServer(listenTo string, _config *Config) error {
 	// Download a file from an http{,s} URL and store it on GCS
 	http.Handle("/slurp", wrapErrors(slurpHandler))
 
+	http.Handle("/peek", wrapErrors(peekHandler))
+
 	http.Handle("/status", wrapErrors(statusHandler))
 	http.Handle("/metrics", wrapErrors(metricsHandler))
 

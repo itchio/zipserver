@@ -86,6 +86,9 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 	if err != nil {
 		return nil, nil, err
 	}
+	// Keep stored Content-Encoding and bytes visible to callers. Go's HTTP
+	// transport can otherwise transparently decompress gzip responses.
+	req.Header.Set("Accept-Encoding", "identity")
 
 	res, err := httpClient.Do(req)
 	if err != nil {

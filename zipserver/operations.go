@@ -152,3 +152,21 @@ type InfoResult struct {
 	Headers map[string][]string
 	Err     error
 }
+
+// PeekParams contains parameters for reading the first bytes of a stored object.
+type PeekParams struct {
+	Key        string
+	TargetName string
+	MaxBytes   uint64
+}
+
+// PeekResult contains the bytes read by a peek operation.
+type PeekResult struct {
+	Key             string
+	Bucket          string
+	Data            []byte
+	ContentType     string
+	ContentEncoding string
+	Decoded         bool
+	Err             error
+}

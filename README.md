@@ -50,6 +50,7 @@ All limits are configured in `zipserver.json` using the names below. For `extrac
 | `MaxFileNameLength` | extract | Maximum path length for a file name in the archive. | `255` |
 | `ExtractionThreads` | extract | Number of worker threads used during extraction. | `4` |
 | `MaxListFiles` | list | Maximum number of files returned by list. | `50000` |
+| `MaxPeekBytes` | peek | Maximum bytes returned by peek. | `1048576` |
 
 ## Usage
 
@@ -68,6 +69,7 @@ zipserver <command> --help    # Show help for a specific command
 | `extract` | Extract a zip file to storage | Source read, optional target write | `/extract` |
 | `copy` | Copy a file to target storage or different key | Source read, target or source write | `/copy` |
 | `delete` | Delete files from storage | Target write | `/delete` |
+| `peek` | Read the first bytes of an extracted storage object | Source or target read | `/peek` |
 | `list` | List files in a zip archive | Source read, URL, or local file | `/list` |
 | `slurp` | Download a URL and store it | Source write, or optional target write | `/slurp` |
 | `testzip` | Extract and serve a local zip file via HTTP for debugging | local only | |
@@ -253,6 +255,29 @@ curl -X POST "http://localhost:8090/delete" \
   -d "target=s3backup" \
   -d "callback=http://example.com/done"
 ```
+
+## Peek
+
+Read the first logical bytes of an already-stored object. This is useful for inspecting extracted files that may be stored with `Content-Encoding: gzip`; peek decodes supported content encodings before collecting bytes.
+
+**HTTP API:**
+```bash
+# Read the first 4096 logical bytes
+curl "http://localhost:8090/peek?target=production&key=games/example/index.html"
+
+# Override the byte count
+curl "http://localhost:8090/peek?target=production&key=games/example/index.html&bytes=1024"
+```
+
+Parameters:
+
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `key` | Storage key to read. | required |
+| `target` | Optional storage target. If omitted, reads from the primary bucket. | |
+| `bytes` | Number of bytes to return, capped by `MaxPeekBytes`. | `4096` |
+
+Objects with `Content-Encoding: gzip` are decoded before bytes are returned. Unsupported encodings return an error.
 
 ## List
 
