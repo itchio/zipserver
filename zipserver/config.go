@@ -110,8 +110,10 @@ type StorageConfig struct {
 	// Compression settings for files extracted to this target.
 	CompressEnabled    bool     `json:",omitempty"`
 	CompressExtensions []string `json:",omitempty"`
-	CompressMinSize    int64    `json:",omitempty"`
-	CompressLevel      int      `json:",omitempty"`
+	// CompressMinSize is the minimum file size before compression is attempted.
+	// A nil pointer inherits the default; an explicit 0 means "no minimum".
+	CompressMinSize *int64 `json:",omitempty"`
+	CompressLevel   int    `json:",omitempty"`
 }
 
 // TODO: eventually this should be a factory that can return different storage types
@@ -203,6 +205,11 @@ type Config struct {
 	Version   string `json:"-"`
 	CommitSHA string `json:"-"`
 	BuildTime string `json:"-"`
+
+	// compressLimiter is the lazily-built, process-wide compression concurrency
+	// budget for this config (see getCompressLimiter). Unexported so it is not
+	// serialized and adds no lock to Config, keeping the struct copy-safe.
+	compressLimiter *compressLimiter
 }
 
 type CompressionConfig struct {
@@ -247,17 +254,20 @@ func (s *StorageConfig) CompressionConfig() *CompressionConfig {
 	if s == nil {
 		return nil
 	}
+	// A nil CompressMinSize inherits the default; an explicit value (including 0,
+	// meaning "no minimum") is used as-is.
+	minSize := int64(defaultCompressMinSize)
+	if s.CompressMinSize != nil {
+		minSize = *s.CompressMinSize
+	}
 	config := &CompressionConfig{
 		Enabled:    s.CompressEnabled,
 		Extensions: s.CompressExtensions,
-		MinSize:    s.CompressMinSize,
+		MinSize:    minSize,
 		Level:      s.CompressLevel,
 	}
 	if len(config.Extensions) == 0 {
 		config.Extensions = defaultCompressExtensions
-	}
-	if config.MinSize == 0 {
-		config.MinSize = 1024
 	}
 	if config.Level == 0 {
 		config.Level = defaultCompressLevel

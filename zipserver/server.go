@@ -111,6 +111,9 @@ func statusHandler(w http.ResponseWriter, r *http.Request) error {
 // StartZipServer starts listening for extract and slurp requests
 func StartZipServer(listenTo string, _config *Config) error {
 	globalConfig = _config
+	// Size the process-wide compression limiter up front so the field is never
+	// written while serving (e.g. by list_handler copying globalConfig).
+	globalConfig.getCompressLimiter()
 
 	http.Handle("/", wrapErrors(versionHandler))
 

@@ -1,7 +1,6 @@
 package zipserver
 
 import (
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -9,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/klauspost/compress/gzip"
 )
 
 const defaultPeekBytes uint64 = 4096

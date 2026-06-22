@@ -1,7 +1,6 @@
 package zipserver
 
 import (
-	"compress/gzip"
 	"context"
 	"io"
 	"math"
@@ -9,6 +8,8 @@ import (
 	"path"
 	"strings"
 	"sync"
+
+	"github.com/klauspost/compress/gzip"
 )
 
 // alreadyCompressedExtensions contains file extensions that are already compressed
@@ -39,8 +40,9 @@ var alreadyCompressedExtensions = map[string]bool{
 const maxCompressBufferSize = uint64(math.MaxInt64 - 1)
 
 const (
-	defaultCompressMaxConcurrent = 1
+	defaultCompressMaxConcurrent = 4
 	defaultCompressLevel         = 7
+	defaultCompressMinSize       = 1024
 	compressCopyBufferSize       = 64 * 1024
 )
 
@@ -62,30 +64,21 @@ type compressLimiter struct {
 	slots chan struct{}
 }
 
-// The compression concurrency cap is a process-wide resource budget (how many
-// cores we're willing to spend on gzip on a shared machine), so there is a
-// single global limiter configured from Config.CompressMaxConcurrent.
-var (
-	compressLimiterMu     sync.Mutex
-	globalCompressLimiter *compressLimiter
-)
-
-// configureCompressLimiter sizes the process-wide compression limiter. The
-// limiter is created once, lazily, on the first call.
-func configureCompressLimiter(maxConcurrent int) {
+// newCompressLimiter builds a compression concurrency limiter with the given
+// cap, falling back to the default when maxConcurrent is non-positive.
+func newCompressLimiter(maxConcurrent int) *compressLimiter {
 	if maxConcurrent <= 0 {
 		maxConcurrent = defaultCompressMaxConcurrent
 	}
-
-	compressLimiterMu.Lock()
-	defer compressLimiterMu.Unlock()
-
-	if globalCompressLimiter == nil {
-		globalCompressLimiter = &compressLimiter{
-			slots: make(chan struct{}, maxConcurrent),
-		}
+	return &compressLimiter{
+		slots: make(chan struct{}, maxConcurrent),
 	}
 }
+
+// compressLimiterInitMu guards lazy creation of a Config's compression limiter.
+// The cap is derived deterministically from Config.CompressMaxConcurrent, so
+// (unlike a configure-once global) it never depends on which caller ran first.
+var compressLimiterInitMu sync.Mutex
 
 // effectiveCompressLevel returns the configured gzip level, falling back to
 // the default when unset (zero) or outside gzip's valid range.
@@ -99,15 +92,16 @@ func effectiveCompressLevel(config *CompressionConfig) int {
 	return config.Level
 }
 
-// getCompressLimiter returns the process-wide compression limiter, lazily
-// creating it with the default cap if it was never configured (e.g. in tests
-// or CLI paths that don't load a full Config).
-func getCompressLimiter() *compressLimiter {
-	configureCompressLimiter(defaultCompressMaxConcurrent)
-
-	compressLimiterMu.Lock()
-	defer compressLimiterMu.Unlock()
-	return globalCompressLimiter
+// getCompressLimiter returns the process-wide compression limiter for this
+// config, creating it once from CompressMaxConcurrent. Extractors share a
+// single *Config, so they share one limiter and one global concurrency budget.
+func (c *Config) getCompressLimiter() *compressLimiter {
+	compressLimiterInitMu.Lock()
+	defer compressLimiterInitMu.Unlock()
+	if c.compressLimiter == nil {
+		c.compressLimiter = newCompressLimiter(c.CompressMaxConcurrent)
+	}
+	return c.compressLimiter
 }
 
 func (l *compressLimiter) acquire(ctx context.Context) error {
@@ -183,8 +177,8 @@ func compressStreamToTemp(
 	reader io.Reader,
 	expectedSize uint64,
 	config *CompressionConfig,
+	limiter *compressLimiter,
 ) (*compressedFile, bool, error) {
-	limiter := getCompressLimiter()
 	if err := limiter.acquire(ctx); err != nil {
 		return nil, false, err
 	}

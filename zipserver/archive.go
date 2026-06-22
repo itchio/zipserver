@@ -114,10 +114,6 @@ func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, target
 		log.Fatal("Failed to create storage:", err)
 	}
 
-	// Size the process-wide compression limiter from the global config before
-	// any files are compressed for this target.
-	configureCompressLimiter(config.CompressMaxConcurrent)
-
 	return &ArchiveExtractor{
 		Storage:          storage,
 		Config:           config,
@@ -530,7 +526,7 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 	}
 
 	if resource.contentEncoding == "" && shouldCompress(resource.key, expectedSize, a.Compression) {
-		compressedFile, usedCompressed, err := compressStreamToTemp(ctx, reader, expectedSize, a.Compression)
+		compressedFile, usedCompressed, err := compressStreamToTemp(ctx, reader, expectedSize, a.Compression, a.Config.getCompressLimiter())
 		if err != nil {
 			if errors.Is(err, ErrLimitExceeded) {
 				return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size (max %d bytes)", expectedSize), Key: resource.key}

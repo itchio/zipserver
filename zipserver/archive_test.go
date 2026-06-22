@@ -23,6 +23,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func int64Ptr(v int64) *int64 {
+	return &v
+}
+
 func testLimits() *ExtractLimits {
 	return &ExtractLimits{
 		MaxFileSize:       1024 * 1024 * 200,
@@ -106,7 +110,7 @@ func Test_TargetCompression(t *testing.T) {
 			Type:               Mem,
 			Bucket:             "target-bucket",
 			CompressEnabled:    true,
-			CompressMinSize:    100,
+			CompressMinSize:    int64Ptr(100),
 			CompressExtensions: []string{".html"},
 		}
 

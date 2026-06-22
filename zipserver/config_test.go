@@ -126,6 +126,7 @@ func Test_ConfigCompressionFields(t *testing.T) {
 	assert.Equal(t, "target-extract", target.ExtractPrefix)
 	assert.True(t, target.CompressEnabled)
 	assert.Equal(t, []string{".js"}, target.CompressExtensions)
-	assert.EqualValues(t, 128, target.CompressMinSize)
+	require.NotNil(t, target.CompressMinSize)
+	assert.EqualValues(t, 128, *target.CompressMinSize)
 	assert.Equal(t, 4, target.CompressLevel)
 }

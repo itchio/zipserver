@@ -39,14 +39,14 @@ process-wide resource budget set on the top-level config:
 
 | Top-level config field | Description | Default |
 | --- | --- | --- |
-| `CompressMaxConcurrent` | Maximum number of files gzip-compressed at once across the whole process. | `1` |
+| `CompressMaxConcurrent` | Maximum number of files gzip-compressed at once across the whole process. | `4` |
 
 Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller.
 
 | Storage target field | Description | Default |
 | --- | --- | --- |
 | `CompressEnabled` | Enable gzip compression for files extracted to this target. | `false` |
-| `CompressMinSize` | Minimum file size in bytes before attempting compression. | `1024` |
+| `CompressMinSize` | Minimum file size in bytes before attempting compression. Set to `0` to compress files of any size. | `1024` |
 | `CompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `7` |
 | `CompressExtensions` | File extensions eligible for compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck",".json",".mem",".gltf",".data",".symbols",".ttf",".otf",".map",".xml",".txt",".symbolmap",".obj",".bin"]` |
 
