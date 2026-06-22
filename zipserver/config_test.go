@@ -100,6 +100,7 @@ func Test_ConfigCompressionFields(t *testing.T) {
 		"ClientEmail": "foobar@example.org",
 		"Bucket": "primary",
 		"ExtractPrefix": "extract",
+		"CompressMaxConcurrent": 3,
 		"StorageTargets": [
 			{
 				"Name": "compressed-target",
@@ -109,7 +110,6 @@ func Test_ConfigCompressionFields(t *testing.T) {
 				"CompressEnabled": true,
 				"CompressExtensions": [".js"],
 				"CompressMinSize": 128,
-				"CompressMaxConcurrent": 3,
 				"CompressLevel": 4
 			}
 		]
@@ -119,12 +119,13 @@ func Test_ConfigCompressionFields(t *testing.T) {
 	c, err := LoadConfig(tmpFile.Name())
 	require.NoError(t, err)
 
+	assert.Equal(t, 3, c.CompressMaxConcurrent)
+
 	require.Len(t, c.StorageTargets, 1)
 	target := c.StorageTargets[0]
 	assert.Equal(t, "target-extract", target.ExtractPrefix)
 	assert.True(t, target.CompressEnabled)
 	assert.Equal(t, []string{".js"}, target.CompressExtensions)
 	assert.EqualValues(t, 128, target.CompressMinSize)
-	assert.Equal(t, 3, target.CompressMaxConcurrent)
 	assert.Equal(t, 4, target.CompressLevel)
 }

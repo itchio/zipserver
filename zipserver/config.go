@@ -108,11 +108,10 @@ type StorageConfig struct {
 	ExtractPrefix string `json:",omitempty"`
 
 	// Compression settings for files extracted to this target.
-	CompressEnabled       bool     `json:",omitempty"`
-	CompressExtensions    []string `json:",omitempty"`
-	CompressMinSize       int64    `json:",omitempty"`
-	CompressMaxConcurrent int      `json:",omitempty"`
-	CompressLevel         int      `json:",omitempty"`
+	CompressEnabled    bool     `json:",omitempty"`
+	CompressExtensions []string `json:",omitempty"`
+	CompressMinSize    int64    `json:",omitempty"`
+	CompressLevel      int      `json:",omitempty"`
 }
 
 // TODO: eventually this should be a factory that can return different storage types
@@ -187,6 +186,11 @@ type Config struct {
 	MaxListFiles      int
 	MaxPeekBytes      uint64 `json:",omitempty"`
 
+	// CompressMaxConcurrent caps how many files may be gzip-compressed at once
+	// across the whole process — a budget for how many cores we're willing to
+	// spend on compression on a shared machine.
+	CompressMaxConcurrent int `json:",omitempty"`
+
 	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
 	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object
 	FilePutTimeout           Duration `json:",omitempty"` // Time to upload a single object
@@ -202,11 +206,10 @@ type Config struct {
 }
 
 type CompressionConfig struct {
-	Enabled       bool
-	Extensions    []string
-	MinSize       int64
-	MaxConcurrent int
-	Level         int
+	Enabled    bool
+	Extensions []string
+	MinSize    int64
+	Level      int
 }
 
 var defaultCompressExtensions = []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck", ".json", ".mem", ".gltf", ".data", ".symbols", ".ttf", ".otf", ".map", ".xml", ".txt", ".symbolmap", ".obj", ".bin"}
@@ -232,6 +235,8 @@ var defaultConfig = Config{
 	MaxListFiles:      50000,
 	MaxPeekBytes:      1024 * 1024,
 
+	CompressMaxConcurrent: defaultCompressMaxConcurrent,
+
 	JobTimeout:               Duration(5 * time.Minute),
 	FileGetTimeout:           Duration(1 * time.Minute),
 	FilePutTimeout:           Duration(1 * time.Minute),
@@ -243,20 +248,16 @@ func (s *StorageConfig) CompressionConfig() *CompressionConfig {
 		return nil
 	}
 	config := &CompressionConfig{
-		Enabled:       s.CompressEnabled,
-		Extensions:    s.CompressExtensions,
-		MinSize:       s.CompressMinSize,
-		MaxConcurrent: s.CompressMaxConcurrent,
-		Level:         s.CompressLevel,
+		Enabled:    s.CompressEnabled,
+		Extensions: s.CompressExtensions,
+		MinSize:    s.CompressMinSize,
+		Level:      s.CompressLevel,
 	}
 	if len(config.Extensions) == 0 {
 		config.Extensions = defaultCompressExtensions
 	}
 	if config.MinSize == 0 {
 		config.MinSize = 1024
-	}
-	if config.MaxConcurrent == 0 {
-		config.MaxConcurrent = defaultCompressMaxConcurrent
 	}
 	if config.Level == 0 {
 		config.Level = defaultCompressLevel

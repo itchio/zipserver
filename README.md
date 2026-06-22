@@ -34,13 +34,19 @@ root, so the HTTP `prefix` parameter is used directly.
 
 ### Target compression settings
 
-Compression is configured per storage target. Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller.
+Compression is enabled per storage target, but the concurrency cap is a
+process-wide resource budget set on the top-level config:
+
+| Top-level config field | Description | Default |
+| --- | --- | --- |
+| `CompressMaxConcurrent` | Maximum number of files gzip-compressed at once across the whole process. | `1` |
+
+Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller.
 
 | Storage target field | Description | Default |
 | --- | --- | --- |
 | `CompressEnabled` | Enable gzip compression for files extracted to this target. | `false` |
 | `CompressMinSize` | Minimum file size in bytes before attempting compression. | `1024` |
-| `CompressMaxConcurrent` | Maximum number of files compressed at once across the process. | `1` |
 | `CompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `7` |
 | `CompressExtensions` | File extensions eligible for compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck",".json",".mem",".gltf",".data",".symbols",".ttf",".otf",".map",".xml",".txt",".symbolmap",".obj",".bin"]` |
 

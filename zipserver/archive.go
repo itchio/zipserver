@@ -114,6 +114,10 @@ func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, target
 		log.Fatal("Failed to create storage:", err)
 	}
 
+	// Size the process-wide compression limiter from the global config before
+	// any files are compressed for this target.
+	configureCompressLimiter(config.CompressMaxConcurrent)
+
 	return &ArchiveExtractor{
 		Storage:          storage,
 		Config:           config,

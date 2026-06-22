@@ -209,7 +209,7 @@ func TestCompressStreamToTemp(t *testing.T) {
 			context.Background(),
 			bytes.NewReader(input),
 			uint64(len(input)),
-			&CompressionConfig{MaxConcurrent: 1},
+			&CompressionConfig{},
 		)
 		if err != nil {
 			t.Fatalf("compressStreamToTemp failed: %v", err)
@@ -241,7 +241,7 @@ func TestCompressStreamToTemp(t *testing.T) {
 			context.Background(),
 			bytes.NewReader(input),
 			uint64(len(input)),
-			&CompressionConfig{MaxConcurrent: 1},
+			&CompressionConfig{},
 		)
 		if err != nil {
 			t.Fatalf("compressStreamToTemp failed: %v", err)
@@ -261,7 +261,7 @@ func TestCompressStreamToTemp(t *testing.T) {
 			context.Background(),
 			bytes.NewReader(input),
 			128,
-			&CompressionConfig{MaxConcurrent: 1},
+			&CompressionConfig{},
 		)
 		if !errors.Is(err, ErrLimitExceeded) {
 			t.Fatalf("expected ErrLimitExceeded, got %v", err)

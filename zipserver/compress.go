@@ -62,16 +62,29 @@ type compressLimiter struct {
 	slots chan struct{}
 }
 
+// The compression concurrency cap is a process-wide resource budget (how many
+// cores we're willing to spend on gzip on a shared machine), so there is a
+// single global limiter configured from Config.CompressMaxConcurrent.
 var (
-	compressLimitersMu sync.Mutex
-	compressLimiters   = map[int]*compressLimiter{}
+	compressLimiterMu     sync.Mutex
+	globalCompressLimiter *compressLimiter
 )
 
-func effectiveCompressMaxConcurrent(config *CompressionConfig) int {
-	if config == nil || config.MaxConcurrent <= 0 {
-		return defaultCompressMaxConcurrent
+// configureCompressLimiter sizes the process-wide compression limiter. The
+// limiter is created once, lazily, on the first call.
+func configureCompressLimiter(maxConcurrent int) {
+	if maxConcurrent <= 0 {
+		maxConcurrent = defaultCompressMaxConcurrent
 	}
-	return config.MaxConcurrent
+
+	compressLimiterMu.Lock()
+	defer compressLimiterMu.Unlock()
+
+	if globalCompressLimiter == nil {
+		globalCompressLimiter = &compressLimiter{
+			slots: make(chan struct{}, maxConcurrent),
+		}
+	}
 }
 
 // effectiveCompressLevel returns the configured gzip level, falling back to
@@ -86,21 +99,15 @@ func effectiveCompressLevel(config *CompressionConfig) int {
 	return config.Level
 }
 
-func getCompressLimiter(config *CompressionConfig) *compressLimiter {
-	maxConcurrent := effectiveCompressMaxConcurrent(config)
+// getCompressLimiter returns the process-wide compression limiter, lazily
+// creating it with the default cap if it was never configured (e.g. in tests
+// or CLI paths that don't load a full Config).
+func getCompressLimiter() *compressLimiter {
+	configureCompressLimiter(defaultCompressMaxConcurrent)
 
-	compressLimitersMu.Lock()
-	defer compressLimitersMu.Unlock()
-
-	if limiter, ok := compressLimiters[maxConcurrent]; ok {
-		return limiter
-	}
-
-	limiter := &compressLimiter{
-		slots: make(chan struct{}, maxConcurrent),
-	}
-	compressLimiters[maxConcurrent] = limiter
-	return limiter
+	compressLimiterMu.Lock()
+	defer compressLimiterMu.Unlock()
+	return globalCompressLimiter
 }
 
 func (l *compressLimiter) acquire(ctx context.Context) error {
@@ -177,7 +184,7 @@ func compressStreamToTemp(
 	expectedSize uint64,
 	config *CompressionConfig,
 ) (*compressedFile, bool, error) {
-	limiter := getCompressLimiter(config)
+	limiter := getCompressLimiter()
 	if err := limiter.acquire(ctx); err != nil {
 		return nil, false, err
 	}
