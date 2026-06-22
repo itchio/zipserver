@@ -69,6 +69,12 @@ var (
 	infoKey    = infoCmd.Flag("key", "Storage key to get info for").Required().String()
 	infoTarget = infoCmd.Flag("target", "Target storage name").String()
 
+	// Peek command
+	peekCmd    = app.Command("peek", "Read the first bytes of a stored object")
+	peekKey    = peekCmd.Flag("key", "Storage key to read").Required().String()
+	peekTarget = peekCmd.Flag("target", "Target storage name").String()
+	peekBytes  = peekCmd.Flag("bytes", "Maximum bytes to read (defaults to MaxPeekBytes-clamped default)").Uint64()
+
 	// List command
 	listCmd  = app.Command("list", "List files in a zip archive")
 	listKey  = listCmd.Flag("key", "Storage key of the zip file").String()
@@ -151,6 +157,8 @@ func main() {
 		runDelete(config)
 	case infoCmd.FullCommand():
 		runInfo(config)
+	case peekCmd.FullCommand():
+		runPeek(config)
 	case listCmd.FullCommand():
 		runList(config)
 	case slurpCmd.FullCommand():
@@ -324,6 +332,50 @@ func runInfo(config *zipserver.Config) {
 		Bucket  string
 		Headers map[string][]string
 	}{true, result.Key, result.Bucket, result.Headers})
+}
+
+func runPeek(config *zipserver.Config) {
+	ops := zipserver.NewOperations(config)
+
+	maxBytes := *peekBytes
+	if maxBytes == 0 {
+		maxBytes = zipserver.DefaultPeekBytes(config)
+	}
+
+	log.Println("Storage key:", *peekKey)
+	if *peekTarget != "" {
+		targetConfig := config.GetStorageTargetByName(*peekTarget)
+		if targetConfig == nil {
+			log.Fatalf("invalid target: %s", *peekTarget)
+		}
+		log.Println("Target:", *peekTarget)
+		log.Println("Bucket:", targetConfig.Bucket)
+	} else {
+		log.Println("Bucket:", config.Bucket)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.FileGetTimeout))
+	defer cancel()
+
+	result := ops.Peek(ctx, zipserver.PeekParams{
+		Key:        *peekKey,
+		TargetName: *peekTarget,
+		MaxBytes:   maxBytes,
+	})
+	if result.Err != nil {
+		log.Fatal(result.Err)
+	}
+
+	// Metadata to stderr, raw bytes to stdout so the output stays pipe-friendly.
+	log.Println("Content-Type:", result.ContentType)
+	if result.ContentEncoding != "" {
+		log.Printf("Content-Encoding: %s (decoded: %t)", result.ContentEncoding, result.Decoded)
+	}
+	log.Printf("Read %d bytes", len(result.Data))
+
+	if _, err := os.Stdout.Write(result.Data); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func runList(config *zipserver.Config) {

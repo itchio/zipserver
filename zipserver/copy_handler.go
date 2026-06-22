@@ -200,12 +200,9 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 		if syncTimeoutMs <= 0 {
 			return fmt.Errorf("sync_timeout must be positive, got: %d", syncTimeoutMs)
 		}
-		syncTimeout = time.Duration(syncTimeoutMs) * time.Millisecond
-
-		// Cap at JobTimeout
-		if syncTimeout > time.Duration(globalConfig.JobTimeout) {
-			syncTimeout = time.Duration(globalConfig.JobTimeout)
-		}
+		syncTimeout = min(
+			// Cap at JobTimeout
+			time.Duration(syncTimeoutMs)*time.Millisecond, time.Duration(globalConfig.JobTimeout))
 	}
 
 	copyParams := CopyParams{

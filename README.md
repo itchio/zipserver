@@ -25,6 +25,31 @@ Create a config file `zipserver.json`:
 
 More config settings can be found in `zipserver/config.go`.
 
+### Target extract settings
+
+Storage targets can override the base extract prefix used for files extracted
+to that target. If a target omits `ExtractPrefix`, it inherits the global
+`ExtractPrefix`. Set target `ExtractPrefix` to `"."` to extract at the bucket
+root, so the HTTP `prefix` parameter is used directly.
+
+### Target compression settings
+
+Compression is enabled per storage target, but the concurrency cap is a
+process-wide resource budget set on the top-level config:
+
+| Top-level config field | Description | Default |
+| --- | --- | --- |
+| `CompressMaxConcurrent` | Maximum number of files gzip-compressed at once across the whole process. | `4` |
+
+Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller.
+
+| Storage target field | Description | Default |
+| --- | --- | --- |
+| `CompressEnabled` | Enable gzip compression for files extracted to this target. | `false` |
+| `CompressMinSize` | Minimum file size in bytes before attempting compression. Set to `0` to compress files of any size. | `1024` |
+| `CompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `7` |
+| `CompressExtensions` | File extensions eligible for compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck",".json",".mem",".gltf",".data",".symbols",".ttf",".otf",".map",".xml",".txt",".symbolmap",".obj",".bin"]` |
+
 ## Limits
 
 All limits are configured in `zipserver.json` using the names below. For `extract` and `list`, you can override limits per request via HTTP query parameters. CLI overrides are available for `extract` via flags, and `--threads` can override `ExtractionThreads`. A value of `0` means "unbounded" for all limits except `ExtractionThreads` (which uses `GOMAXPROCS`, and is forced to at least 1).
@@ -38,6 +63,7 @@ All limits are configured in `zipserver.json` using the names below. For `extrac
 | `MaxFileNameLength` | extract | Maximum path length for a file name in the archive. | `255` |
 | `ExtractionThreads` | extract | Number of worker threads used during extraction. | `4` |
 | `MaxListFiles` | list | Maximum number of files returned by list. | `50000` |
+| `MaxPeekBytes` | peek | Maximum bytes returned by peek. | `1048576` |
 
 ## Usage
 
@@ -56,6 +82,7 @@ zipserver <command> --help    # Show help for a specific command
 | `extract` | Extract a zip file to storage | Source read, optional target write | `/extract` |
 | `copy` | Copy a file to target storage or different key | Source read, target or source write | `/copy` |
 | `delete` | Delete files from storage | Target write | `/delete` |
+| `peek` | Read the first bytes of an extracted storage object | Source or target read | `/peek` |
 | `list` | List files in a zip archive | Source read, URL, or local file | `/list` |
 | `slurp` | Download a URL and store it | Source write, or optional target write | `/slurp` |
 | `testzip` | Extract and serve a local zip file via HTTP for debugging | local only | |
@@ -152,7 +179,7 @@ curl -X POST "http://localhost:8090/extract" \
 **Behavior:**
 - Matches `index.html` files case-insensitively (e.g., `INDEX.HTML`, `Index.Html`)
 - Injects into all `index.html` files, including nested ones (e.g., `subdir/index.html`)
-- Skips pre-compressed files (gzip/brotli) since appending to compressed streams would corrupt them
+- Skips compressed files (gzip/brotli) since appending to compressed streams would corrupt them
 - The response includes `"Injected": true` for each file that received the footer
 
 ## Copy
@@ -240,6 +267,38 @@ curl -X POST "http://localhost:8090/delete" \
   -d "keys[]=file2.zip" \
   -d "target=s3backup" \
   -d "callback=http://example.com/done"
+```
+
+## Peek
+
+Read the first logical bytes of an already-stored object. This is useful for inspecting extracted files that may be stored with `Content-Encoding: gzip`; peek decodes supported content encodings before collecting bytes.
+
+**HTTP API:**
+```bash
+# Read the first 4096 logical bytes
+curl "http://localhost:8090/peek?target=production&key=games/example/index.html"
+
+# Override the byte count
+curl "http://localhost:8090/peek?target=production&key=games/example/index.html&bytes=1024"
+```
+
+Parameters:
+
+| Parameter | Description | Default |
+| --- | --- | --- |
+| `key` | Storage key to read. | required |
+| `target` | Optional storage target. If omitted, reads from the primary bucket. | |
+| `bytes` | Number of bytes to return, capped by `MaxPeekBytes`. | `4096` |
+
+Objects with `Content-Encoding: gzip` are decoded before bytes are returned. Unsupported encodings return an error.
+
+**CLI:**
+```bash
+# Raw bytes go to stdout; metadata (content type, encoding, size) goes to stderr
+zipserver peek --key games/example/index.html --target production > index.html
+
+# Override the byte count
+zipserver peek --key games/example/index.html --bytes 1024
 ```
 
 ## List
@@ -332,7 +391,12 @@ Example target entries:
       "Type": "GCS",
       "GCSPrivateKeyPath": "/path/to/target/key.pem",
       "GCSClientEmail": "target-service@project.iam.gserviceaccount.com",
-      "Bucket": "my-gcs-backup-bucket"
+      "Bucket": "my-gcs-backup-bucket",
+      "ExtractPrefix": "public",
+      "CompressEnabled": true,
+      "CompressExtensions": [".html", ".js", ".css", ".svg", ".wasm"],
+      "CompressMinSize": 1024,
+      "CompressLevel": 7
     }
   ]
 }

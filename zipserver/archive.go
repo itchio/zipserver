@@ -1,13 +1,13 @@
 package zipserver
 
 import (
-	"github.com/klauspost/compress/zip"
 	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/klauspost/compress/zip"
 	"io"
 	"log"
 	"mime"
@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -50,8 +51,11 @@ func isIndexHtml(filename string) bool {
 type ArchiveExtractor struct {
 	Storage // Source storage (for reading zips)
 	*Config
-	TargetStorage Storage // Optional: target storage for uploads (if nil, uses source)
-	TargetBucket  string  // Optional: target bucket (if empty, uses config.Bucket)
+	TargetStorage    Storage            // Optional: target storage for uploads (if nil, uses source)
+	TargetBucket     string             // Optional: target bucket (if empty, uses config.Bucket)
+	ExtractPrefix    string             // Destination base prefix for extracted files.
+	ExtractPrefixSet bool               // Allows an explicit empty destination prefix.
+	Compression      *CompressionConfig // Compression policy for extracted files.
 }
 
 // getDestinationStorage returns the storage where extracted files are written
@@ -70,6 +74,13 @@ func (a *ArchiveExtractor) getDestinationBucket() string {
 	return a.Bucket
 }
 
+func (a *ArchiveExtractor) getExtractPrefix() string {
+	if a.ExtractPrefixSet {
+		return a.ExtractPrefix
+	}
+	return a.Config.ExtractPrefix
+}
+
 // ExtractedFile represents a file extracted from a .zip into a GCS bucket
 type ExtractedFile struct {
 	Key      string
@@ -86,12 +97,17 @@ func NewArchiveExtractor(config *Config) *ArchiveExtractor {
 		log.Fatal("Failed to create storage:", err)
 	}
 
-	return &ArchiveExtractor{Storage: storage, Config: config}
+	return &ArchiveExtractor{
+		Storage:          storage,
+		Config:           config,
+		ExtractPrefix:    config.ExtractPrefix,
+		ExtractPrefixSet: true,
+	}
 }
 
 // NewArchiveExtractorWithTarget creates an archiver that reads from source storage
 // but writes to a different target storage
-func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, targetBucket string) *ArchiveExtractor {
+func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, targetConfig *StorageConfig) *ArchiveExtractor {
 	storage, err := NewGcsStorage(config)
 
 	if storage == nil {
@@ -99,10 +115,13 @@ func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, target
 	}
 
 	return &ArchiveExtractor{
-		Storage:       storage,
-		Config:        config,
-		TargetStorage: targetStorage,
-		TargetBucket:  targetBucket,
+		Storage:          storage,
+		Config:           config,
+		TargetStorage:    targetStorage,
+		TargetBucket:     targetConfig.Bucket,
+		ExtractPrefix:    targetConfig.EffectiveExtractPrefix(config.ExtractPrefix),
+		ExtractPrefixSet: true,
+		Compression:      targetConfig.CompressionConfig(),
 	}
 }
 
@@ -217,12 +236,7 @@ func shouldIncludeFileByList(fname string, onlyFiles []string) bool {
 	if len(onlyFiles) == 0 {
 		return true
 	}
-	for _, allowed := range onlyFiles {
-		if fname == allowed {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(onlyFiles, fname)
 }
 
 // UploadFileTask contains the information needed to extract a single file from a .zip
@@ -361,10 +375,7 @@ func (a *ArchiveExtractor) sendZipExtracted(
 	results := make(chan UploadFileResult)
 	threads := limits.ExtractionThreads
 	if threads < 1 {
-		threads = runtime.GOMAXPROCS(0)
-		if threads < 1 {
-			threads = 1
-		}
+		threads = max(runtime.GOMAXPROCS(0), 1)
 	}
 
 	done := make(chan struct{}, threads)
@@ -474,19 +485,19 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 		resource.contentEncoding = "gzip"
 
 		// try to see if there's a real extension hidden beneath
-		if strings.HasSuffix(key, ".gz") {
-			realMimeType := mime.TypeByExtension(path.Ext(strings.TrimSuffix(key, ".gz")))
+		if before, ok := strings.CutSuffix(key, ".gz"); ok {
+			realMimeType := mime.TypeByExtension(path.Ext(before))
 
 			if realMimeType != "" {
 				mimeType = realMimeType
 			}
 		}
 
-	} else if strings.HasSuffix(key, ".br") {
+	} else if before, ok := strings.CutSuffix(key, ".br"); ok {
 		// there is no way to detect a brotli stream by content, so we assume if it ends if .br then it's brotli
 		// this path is used for Unity 2020 webgl games built with brotli compression
 		resource.contentEncoding = "br"
-		realMimeType := mime.TypeByExtension(path.Ext(strings.TrimSuffix(key, ".br")))
+		realMimeType := mime.TypeByExtension(path.Ext(before))
 
 		if realMimeType != "" {
 			mimeType = realMimeType
@@ -512,6 +523,39 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 		expectedSize += uint64(len(htmlFooter))
 		reader = newAppendReader(reader, htmlFooter)
 		injected = true
+	}
+
+	if resource.contentEncoding == "" && shouldCompress(resource.key, expectedSize, a.Compression) {
+		compressedFile, usedCompressed, err := compressStreamToTemp(ctx, reader, expectedSize, a.Compression, a.Config.getCompressLimiter())
+		if err != nil {
+			if errors.Is(err, ErrLimitExceeded) {
+				return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size (max %d bytes)", expectedSize), Key: resource.key}
+			}
+			return UploadFileResult{Error: err, Key: resource.key}
+		}
+
+		if usedCompressed {
+			defer compressedFile.Cleanup()
+			reader = compressedFile.Reader
+			resource.contentEncoding = "gzip"
+			expectedSize = compressedFile.Size
+		} else {
+			// Compression attempt consumed the stream. Re-open the zip entry and re-apply
+			// HTML footer injection so we can stream the original bytes to storage.
+			retryReaderCloser, err := file.Open()
+			if err != nil {
+				return UploadFileResult{Error: err, Key: resource.key}
+			}
+			defer retryReaderCloser.Close()
+
+			reader = retryReaderCloser
+			if injected {
+				reader = newAppendReader(reader, htmlFooter)
+			}
+		}
+	}
+
+	if injected {
 		log.Printf("Sending: %s (injected)", resource)
 	} else {
 		log.Printf("Sending: %s", resource)
@@ -551,7 +595,7 @@ func (a *ArchiveExtractor) ExtractZip(
 	}
 
 	defer os.Remove(fname)
-	prefix = path.Join(a.ExtractPrefix, prefix)
+	prefix = path.Join(a.getExtractPrefix(), prefix)
 	return a.sendZipExtracted(ctx, prefix, fname, limits)
 }
 

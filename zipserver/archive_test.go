@@ -1,16 +1,18 @@
 package zipserver
 
 import (
-	"github.com/klauspost/compress/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/klauspost/compress/zip"
 	"io"
 	"io/fs"
 	"math/rand"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,6 +22,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func int64Ptr(v int64) *int64 {
+	return &v
+}
 
 func testLimits() *ExtractLimits {
 	return &ExtractLimits{
@@ -66,6 +72,154 @@ func Test_ExtractOnGCS(t *testing.T) {
 
 		_, err = archiver.ExtractZip(ctx, "zipserver_test/test.zip", "zipserver_test/extract", testLimits())
 		assert.NoError(t, err)
+	})
+}
+
+func Test_TargetCompression(t *testing.T) {
+	ctx := context.Background()
+
+	withTargetZip := func(t *testing.T, config *Config, targetConfig StorageConfig, cb func(source *MemStorage, target *MemStorage, archiver *ArchiveExtractor, zipPath, prefix string)) {
+		source, _ := NewMemStorage()
+		target, _ := NewMemStorage()
+		prefix := "zipserver_test/target_compression_test"
+		zipPath := "target_compression_test.zip"
+		htmlContent := bytes.Repeat([]byte("<html><body>Hello World!</body></html>"), 50)
+
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		(&zipLayout{entries: []zipEntry{{name: "index.html", data: htmlContent}}}).Write(t, zw)
+		require.NoError(t, zw.Close())
+
+		_, err := source.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+		require.NoError(t, err)
+
+		archiver := &ArchiveExtractor{
+			Storage:       source,
+			Config:        config,
+			TargetStorage: target,
+			TargetBucket:  targetConfig.Bucket,
+			Compression:   targetConfig.CompressionConfig(),
+		}
+		cb(source, target, archiver, zipPath, prefix)
+	}
+
+	t.Run("target enabled compresses even when primary disabled", func(t *testing.T) {
+		config := emptyConfig()
+		targetConfig := StorageConfig{
+			Name:               "compressed-target",
+			Type:               Mem,
+			Bucket:             "target-bucket",
+			CompressEnabled:    true,
+			CompressMinSize:    int64Ptr(100),
+			CompressExtensions: []string{".html"},
+		}
+
+		withTargetZip(t, config, targetConfig, func(source *MemStorage, target *MemStorage, archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			require.NoError(t, err)
+			require.Len(t, files, 1)
+
+			h, err := target.HeadFile(ctx, targetConfig.Bucket, files[0].Key)
+			require.NoError(t, err)
+			assert.Equal(t, "gzip", h.Get("content-encoding"))
+
+			_, _, err = source.GetFile(ctx, config.Bucket, files[0].Key)
+			assert.Error(t, err, "extracted file should be written to target storage")
+		})
+	})
+
+	t.Run("target disabled does not inherit primary compression", func(t *testing.T) {
+		config := emptyConfig()
+		targetConfig := StorageConfig{
+			Name:   "plain-target",
+			Type:   Mem,
+			Bucket: "target-bucket",
+		}
+
+		withTargetZip(t, config, targetConfig, func(source *MemStorage, target *MemStorage, archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			require.NoError(t, err)
+			require.Len(t, files, 1)
+
+			h, err := target.HeadFile(ctx, targetConfig.Bucket, files[0].Key)
+			require.NoError(t, err)
+			assert.Empty(t, h.Get("content-encoding"))
+		})
+	})
+}
+
+func Test_TargetExtractPrefix(t *testing.T) {
+	ctx := context.Background()
+
+	withTargetZip := func(t *testing.T, config *Config, targetConfig StorageConfig) ([]ExtractedFile, *MemStorage) {
+		source, _ := NewMemStorage()
+		target, _ := NewMemStorage()
+		zipPath := "target_prefix_test.zip"
+
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		(&zipLayout{entries: []zipEntry{{name: "index.html", data: []byte("<html>Hello</html>")}}}).Write(t, zw)
+		require.NoError(t, zw.Close())
+
+		_, err := source.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+		require.NoError(t, err)
+
+		archiver := &ArchiveExtractor{
+			Storage:          source,
+			Config:           config,
+			TargetStorage:    target,
+			TargetBucket:     targetConfig.Bucket,
+			ExtractPrefix:    targetConfig.EffectiveExtractPrefix(config.ExtractPrefix),
+			ExtractPrefixSet: true,
+		}
+
+		files, err := archiver.ExtractZip(ctx, zipPath, "request-prefix", testLimits())
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+		return files, target
+	}
+
+	t.Run("target prefix overrides global prefix", func(t *testing.T) {
+		config := emptyConfig()
+		config.ExtractPrefix = "global-prefix"
+		targetConfig := StorageConfig{
+			Name:          "prefixed-target",
+			Type:          Mem,
+			Bucket:        "target-bucket",
+			ExtractPrefix: "target-prefix",
+		}
+
+		files, target := withTargetZip(t, config, targetConfig)
+		assert.Equal(t, "target-prefix/request-prefix/index.html", files[0].Key)
+		_, _, err := target.GetFile(ctx, targetConfig.Bucket, files[0].Key)
+		assert.NoError(t, err)
+	})
+
+	t.Run("empty target prefix inherits global prefix", func(t *testing.T) {
+		config := emptyConfig()
+		config.ExtractPrefix = "global-prefix"
+		targetConfig := StorageConfig{
+			Name:   "inherited-prefix-target",
+			Type:   Mem,
+			Bucket: "target-bucket",
+		}
+
+		files, _ := withTargetZip(t, config, targetConfig)
+		assert.Equal(t, "global-prefix/request-prefix/index.html", files[0].Key)
+	})
+
+	t.Run("dot target prefix extracts at bucket root", func(t *testing.T) {
+		config := emptyConfig()
+		config.ExtractPrefix = "global-prefix"
+		targetConfig := StorageConfig{
+			Name:          "root-prefix-target",
+			Type:          Mem,
+			Bucket:        "target-bucket",
+			ExtractPrefix: ".",
+		}
+
+		files, _ := withTargetZip(t, config, targetConfig)
+		assert.Equal(t, "request-prefix/index.html", files[0].Key)
 	})
 }
 
@@ -1038,4 +1192,266 @@ func Test_isIndexHtml(t *testing.T) {
 			assert.Equal(t, tc.expected, result, "isIndexHtml(%q)", tc.filename)
 		})
 	}
+}
+
+func Test_Compression(t *testing.T) {
+	ctx := context.Background()
+
+	withZip := func(t *testing.T, target *MemStorage, config *Config, compression *CompressionConfig, entries []zipEntry, cb func(archiver *ArchiveExtractor, zipPath, prefix string)) {
+		source, _ := NewMemStorage()
+		prefix := "zipserver_test/precompress_test"
+		zipPath := "precompress_test.zip"
+
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		(&zipLayout{entries: entries}).Write(t, zw)
+		err := zw.Close()
+		assert.NoError(t, err)
+		_, err = source.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{})
+		assert.NoError(t, err)
+
+		archiver := &ArchiveExtractor{
+			Storage:       source,
+			Config:        config,
+			TargetStorage: target,
+			TargetBucket:  config.Bucket,
+			Compression:   compression,
+		}
+		cb(archiver, zipPath, prefix)
+	}
+
+	t.Run("compresses eligible files and sets Content-Encoding", func(t *testing.T) {
+		storage, _ := NewMemStorage()
+		config := emptyConfig()
+		compression := &CompressionConfig{
+			Enabled:    true,
+			MinSize:    100,
+			Extensions: []string{".html", ".js", ".css"},
+		}
+
+		// Create compressible content (repetitive text compresses well)
+		htmlContent := bytes.Repeat([]byte("<html><body>Hello World!</body></html>"), 50)
+		jsContent := bytes.Repeat([]byte("function test() { console.log('hello'); }"), 50)
+		wantByName := map[string][]byte{
+			"index.html": htmlContent,
+			"app.js":     jsContent,
+		}
+
+		withZip(t, storage, config, compression, []zipEntry{
+			{name: "index.html", data: htmlContent},
+			{name: "app.js", data: jsContent},
+		}, func(archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+
+			for _, f := range files {
+				h, err := storage.HeadFile(ctx, config.Bucket, f.Key)
+				assert.NoError(t, err)
+				assert.Equal(t, "gzip", h.Get("content-encoding"), "file %s should have gzip encoding", f.Key)
+
+				reader, _, err := storage.GetFile(ctx, config.Bucket, f.Key)
+				assert.NoError(t, err)
+				compressedData, err := io.ReadAll(reader)
+				assert.NoError(t, err)
+				assert.NoError(t, reader.Close())
+
+				name := path.Base(f.Key)
+				require.Contains(t, wantByName, name)
+				want := wantByName[name]
+				assert.True(t, len(compressedData) < len(want), "compressed size should be smaller")
+
+				gzReader, err := gzip.NewReader(bytes.NewReader(compressedData))
+				assert.NoError(t, err)
+				decompressed, err := io.ReadAll(gzReader)
+				assert.NoError(t, err)
+				assert.NoError(t, gzReader.Close())
+				assert.Equal(t, want, decompressed)
+			}
+		})
+	})
+
+	t.Run("skips files below minimum size", func(t *testing.T) {
+		storage, _ := NewMemStorage()
+		config := emptyConfig()
+		compression := &CompressionConfig{
+			Enabled:    true,
+			MinSize:    1024,
+			Extensions: []string{".html"},
+		}
+
+		smallContent := []byte("<html>Small</html>")
+
+		withZip(t, storage, config, compression, []zipEntry{
+			{name: "small.html", data: smallContent},
+		}, func(archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+
+			h, _ := storage.HeadFile(ctx, config.Bucket, files[0].Key)
+			assert.Empty(t, h.Get("content-encoding"), "small file should not be compressed")
+
+			// Content should be unchanged
+			reader, _, _ := storage.GetFile(ctx, config.Bucket, files[0].Key)
+			data, _ := io.ReadAll(reader)
+			reader.Close()
+			assert.Equal(t, smallContent, data)
+		})
+	})
+
+	t.Run("skips non-matching extensions", func(t *testing.T) {
+		storage, _ := NewMemStorage()
+		config := emptyConfig()
+		compression := &CompressionConfig{
+			Enabled:    true,
+			MinSize:    100,
+			Extensions: []string{".html", ".js"},
+		}
+
+		jsonContent := bytes.Repeat([]byte(`{"key": "value", "number": 123}`), 50)
+
+		withZip(t, storage, config, compression, []zipEntry{
+			{name: "data.json", data: jsonContent},
+		}, func(archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+
+			h, _ := storage.HeadFile(ctx, config.Bucket, files[0].Key)
+			assert.Empty(t, h.Get("content-encoding"), "non-matching extension should not be compressed")
+		})
+	})
+
+	t.Run("skips already-compressed files", func(t *testing.T) {
+		storage, _ := NewMemStorage()
+		config := emptyConfig()
+		compression := &CompressionConfig{
+			Enabled:    true,
+			MinSize:    10,
+			Extensions: []string{".png", ".gz", ".jpg"},
+		}
+
+		// PNG magic bytes + some data
+		pngData := append([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, bytes.Repeat([]byte{0x00}, 100)...)
+		// Gzip magic bytes + some data
+		gzData := append([]byte{0x1F, 0x8B, 0x08}, bytes.Repeat([]byte{0x00}, 100)...)
+
+		withZip(t, storage, config, compression, []zipEntry{
+			{name: "image.png", data: pngData},
+			{name: "archive.gz", data: gzData},
+		}, func(archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			assert.NoError(t, err)
+			assert.Len(t, files, 2)
+
+			for _, f := range files {
+				h, _ := storage.HeadFile(ctx, config.Bucket, f.Key)
+				// These files are detected as gzip by content, so they'll have gzip encoding
+				// but they shouldn't be double-compressed
+				if strings.HasSuffix(f.Key, ".gz") {
+					assert.Equal(t, "gzip", h.Get("content-encoding"))
+				}
+			}
+		})
+	})
+
+	t.Run("compresses HTML footer with content", func(t *testing.T) {
+		storage, _ := NewMemStorage()
+		config := emptyConfig()
+		compression := &CompressionConfig{
+			Enabled:    true,
+			MinSize:    100,
+			Extensions: []string{".html"},
+		}
+
+		htmlContent := bytes.Repeat([]byte("<html><body>Content</body></html>"), 20)
+		footer := bytes.Repeat([]byte("<script>console.log('injected');</script>"), 10)
+
+		withZip(t, storage, config, compression, []zipEntry{
+			{name: "index.html", data: htmlContent},
+		}, func(archiver *ArchiveExtractor, zipPath, prefix string) {
+			limits := testLimits()
+			limits.HtmlFooter = string(footer)
+
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, limits)
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+
+			h, _ := storage.HeadFile(ctx, config.Bucket, files[0].Key)
+			assert.Equal(t, "gzip", h.Get("content-encoding"))
+
+			// Verify the footer was included before compression
+			reader, _, _ := storage.GetFile(ctx, config.Bucket, files[0].Key)
+			compressedData, _ := io.ReadAll(reader)
+			reader.Close()
+
+			// Decompress and verify content includes footer
+			gzReader, err := gzip.NewReader(bytes.NewReader(compressedData))
+			assert.NoError(t, err)
+			decompressed, _ := io.ReadAll(gzReader)
+			gzReader.Close()
+
+			expected := string(htmlContent) + string(footer)
+			assert.Equal(t, expected, string(decompressed))
+		})
+	})
+
+	t.Run("skips compression when result would be larger", func(t *testing.T) {
+		storage, _ := NewMemStorage()
+		config := emptyConfig()
+		compression := &CompressionConfig{
+			Enabled:    true,
+			MinSize:    0,
+			Extensions: []string{".html"},
+		}
+
+		// Empty input has gzip framing overhead, so it deterministically should not be stored compressed.
+		incompressibleData := []byte{}
+
+		withZip(t, storage, config, compression, []zipEntry{
+			{name: "random.html", data: incompressibleData},
+		}, func(archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+
+			h, _ := storage.HeadFile(ctx, config.Bucket, files[0].Key)
+			// If compressed would be larger, should not have gzip encoding
+			// Note: The actual behavior depends on whether gzip makes it larger
+			// For truly random data, gzip often makes it larger
+
+			reader, _, _ := storage.GetFile(ctx, config.Bucket, files[0].Key)
+			storedData, _ := io.ReadAll(reader)
+			reader.Close()
+
+			assert.Empty(t, h.Get("content-encoding"), "larger compressed output should not be stored")
+			assert.Equal(t, incompressibleData, storedData)
+		})
+	})
+
+	t.Run("disabled by default", func(t *testing.T) {
+		storage, _ := NewMemStorage()
+		config := emptyConfig()
+		// No compression config is provided by default.
+
+		htmlContent := bytes.Repeat([]byte("<html><body>Hello World!</body></html>"), 50)
+
+		withZip(t, storage, config, nil, []zipEntry{
+			{name: "index.html", data: htmlContent},
+		}, func(archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+
+			h, _ := storage.HeadFile(ctx, config.Bucket, files[0].Key)
+			assert.Empty(t, h.Get("content-encoding"), "compression should be disabled by default")
+
+			// Content should be unchanged
+			reader, _, _ := storage.GetFile(ctx, config.Bucket, files[0].Key)
+			data, _ := io.ReadAll(reader)
+			reader.Close()
+			assert.Equal(t, htmlContent, data)
+		})
+	})
 }

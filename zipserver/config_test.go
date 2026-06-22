@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Config(t *testing.T) {
@@ -84,6 +85,48 @@ func Test_Config(t *testing.T) {
 	assert.Equal(t, 1*time.Minute, time.Duration(c.FileGetTimeout))
 	assert.Equal(t, 1*time.Minute, time.Duration(c.FilePutTimeout))
 	assert.Equal(t, 5*time.Second, time.Duration(c.AsyncNotificationTimeout))
+	assert.Equal(t, uint64(1024*1024), c.MaxPeekBytes)
 
 	assert.True(t, c.String() != "")
+}
+
+func Test_ConfigCompressionFields(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "zipserver-config-compression")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+
+	configJSON := []byte(`{
+		"PrivateKeyPath": "/foo/bar.pem",
+		"ClientEmail": "foobar@example.org",
+		"Bucket": "primary",
+		"ExtractPrefix": "extract",
+		"CompressMaxConcurrent": 3,
+		"StorageTargets": [
+			{
+				"Name": "compressed-target",
+				"Type": "Mem",
+				"Bucket": "target",
+				"ExtractPrefix": "target-extract",
+				"CompressEnabled": true,
+				"CompressExtensions": [".js"],
+				"CompressMinSize": 128,
+				"CompressLevel": 4
+			}
+		]
+	}`)
+	require.NoError(t, os.WriteFile(tmpFile.Name(), configJSON, 0o600))
+
+	c, err := LoadConfig(tmpFile.Name())
+	require.NoError(t, err)
+
+	assert.Equal(t, 3, c.CompressMaxConcurrent)
+
+	require.Len(t, c.StorageTargets, 1)
+	target := c.StorageTargets[0]
+	assert.Equal(t, "target-extract", target.ExtractPrefix)
+	assert.True(t, target.CompressEnabled)
+	assert.Equal(t, []string{".js"}, target.CompressExtensions)
+	require.NotNil(t, target.CompressMinSize)
+	assert.EqualValues(t, 128, *target.CompressMinSize)
+	assert.Equal(t, 4, target.CompressLevel)
 }

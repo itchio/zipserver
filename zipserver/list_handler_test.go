@@ -1,8 +1,8 @@
 package zipserver
 
 import (
-	"github.com/klauspost/compress/zip"
 	"bytes"
+	"github.com/klauspost/compress/zip"
 	"testing"
 )
 
@@ -21,7 +21,7 @@ func TestCheckContentLength(t *testing.T) {
 func TestListZipBytesMaxListFiles(t *testing.T) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		f, err := zw.CreateHeader(&zip.FileHeader{Name: "file"})
 		if err != nil {
 			t.Fatalf("create header: %v", err)

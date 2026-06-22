@@ -86,6 +86,9 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 	if err != nil {
 		return nil, nil, err
 	}
+	// Keep stored Content-Encoding and bytes visible to callers. Go's HTTP
+	// transport can otherwise transparently decompress gzip responses.
+	req.Header.Set("Accept-Encoding", "identity")
 
 	res, err := httpClient.Do(req)
 	if err != nil {
@@ -175,8 +178,8 @@ func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents i
 	// Parse MD5 from x-goog-hash header(s)
 	// GCS may return multiple X-Goog-Hash headers (one for crc32c, one for md5)
 	for _, googHash := range res.Header.Values("x-goog-hash") {
-		if strings.HasPrefix(googHash, "md5=") {
-			b64 := strings.TrimPrefix(googHash, "md5=")
+		if after, ok := strings.CutPrefix(googHash, "md5="); ok {
+			b64 := after
 			if decoded, err := base64.StdEncoding.DecodeString(b64); err == nil {
 				result.MD5 = hex.EncodeToString(decoded)
 			}

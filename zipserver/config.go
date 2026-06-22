@@ -102,6 +102,18 @@ type StorageConfig struct {
 	S3Region      string `json:",omitempty"`
 
 	Bucket string `json:",omitempty"`
+
+	// ExtractPrefix overrides the global extract prefix for this target.
+	// Empty inherits Config.ExtractPrefix. Use "." or "/" to extract at the bucket root.
+	ExtractPrefix string `json:",omitempty"`
+
+	// Compression settings for files extracted to this target.
+	CompressEnabled    bool     `json:",omitempty"`
+	CompressExtensions []string `json:",omitempty"`
+	// CompressMinSize is the minimum file size before compression is attempted.
+	// A nil pointer inherits the default; an explicit 0 means "no minimum".
+	CompressMinSize *int64 `json:",omitempty"`
+	CompressLevel   int    `json:",omitempty"`
 }
 
 // TODO: eventually this should be a factory that can return different storage types
@@ -174,6 +186,12 @@ type Config struct {
 	ExtractionThreads int
 	MaxInputZipSize   uint64
 	MaxListFiles      int
+	MaxPeekBytes      uint64 `json:",omitempty"`
+
+	// CompressMaxConcurrent caps how many files may be gzip-compressed at once
+	// across the whole process — a budget for how many cores we're willing to
+	// spend on compression on a shared machine.
+	CompressMaxConcurrent int `json:",omitempty"`
 
 	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
 	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object
@@ -187,7 +205,21 @@ type Config struct {
 	Version   string `json:"-"`
 	CommitSHA string `json:"-"`
 	BuildTime string `json:"-"`
+
+	// compressLimiter is the lazily-built, process-wide compression concurrency
+	// budget for this config (see getCompressLimiter). Unexported so it is not
+	// serialized and adds no lock to Config, keeping the struct copy-safe.
+	compressLimiter *compressLimiter
 }
+
+type CompressionConfig struct {
+	Enabled    bool
+	Extensions []string
+	MinSize    int64
+	Level      int
+}
+
+var defaultCompressExtensions = []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck", ".json", ".mem", ".gltf", ".data", ".symbols", ".ttf", ".otf", ".map", ".xml", ".txt", ".symbolmap", ".obj", ".bin"}
 
 // GetStorageTargetByName returns the storage target with the given name from the config.
 // If no such target exists, it returns nil.
@@ -208,11 +240,49 @@ var defaultConfig = Config{
 	ExtractionThreads: 4,
 	MaxInputZipSize:   1024 * 1024 * 100,
 	MaxListFiles:      50000,
+	MaxPeekBytes:      1024 * 1024,
+
+	CompressMaxConcurrent: defaultCompressMaxConcurrent,
 
 	JobTimeout:               Duration(5 * time.Minute),
 	FileGetTimeout:           Duration(1 * time.Minute),
 	FilePutTimeout:           Duration(1 * time.Minute),
 	AsyncNotificationTimeout: Duration(5 * time.Second),
+}
+
+func (s *StorageConfig) CompressionConfig() *CompressionConfig {
+	if s == nil {
+		return nil
+	}
+	// A nil CompressMinSize inherits the default; an explicit value (including 0,
+	// meaning "no minimum") is used as-is.
+	minSize := int64(defaultCompressMinSize)
+	if s.CompressMinSize != nil {
+		minSize = *s.CompressMinSize
+	}
+	config := &CompressionConfig{
+		Enabled:    s.CompressEnabled,
+		Extensions: s.CompressExtensions,
+		MinSize:    minSize,
+		Level:      s.CompressLevel,
+	}
+	if len(config.Extensions) == 0 {
+		config.Extensions = defaultCompressExtensions
+	}
+	if config.Level == 0 {
+		config.Level = defaultCompressLevel
+	}
+	return config
+}
+
+func (s *StorageConfig) EffectiveExtractPrefix(globalPrefix string) string {
+	if s == nil || s.ExtractPrefix == "" {
+		return globalPrefix
+	}
+	if s.ExtractPrefix == "." || s.ExtractPrefix == "/" {
+		return ""
+	}
+	return s.ExtractPrefix
 }
 
 // Duration adds JSON (de)serialization to time.Duration.

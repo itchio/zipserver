@@ -63,7 +63,7 @@ func getIntParam(params url.Values, name string) (int, error) {
 	return valInt, nil
 }
 
-func writeJSONMessage(w http.ResponseWriter, msg interface{}) error {
+func writeJSONMessage(w http.ResponseWriter, msg any) error {
 	blob, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -111,6 +111,9 @@ func statusHandler(w http.ResponseWriter, r *http.Request) error {
 // StartZipServer starts listening for extract and slurp requests
 func StartZipServer(listenTo string, _config *Config) error {
 	globalConfig = _config
+	// Size the process-wide compression limiter up front so the field is never
+	// written while serving (e.g. by list_handler copying globalConfig).
+	globalConfig.getCompressLimiter()
 
 	http.Handle("/", wrapErrors(versionHandler))
 
@@ -126,6 +129,8 @@ func StartZipServer(listenTo string, _config *Config) error {
 
 	// Download a file from an http{,s} URL and store it on GCS
 	http.Handle("/slurp", wrapErrors(slurpHandler))
+
+	http.Handle("/peek", wrapErrors(peekHandler))
 
 	http.Handle("/status", wrapErrors(statusHandler))
 	http.Handle("/metrics", wrapErrors(metricsHandler))
