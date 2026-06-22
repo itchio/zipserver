@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1070,6 +1071,10 @@ func Test_PreCompression(t *testing.T) {
 		// Create compressible content (repetitive text compresses well)
 		htmlContent := bytes.Repeat([]byte("<html><body>Hello World!</body></html>"), 50)
 		jsContent := bytes.Repeat([]byte("function test() { console.log('hello'); }"), 50)
+		wantByName := map[string][]byte{
+			"index.html": htmlContent,
+			"app.js":     jsContent,
+		}
 
 		withZip(t, storage, config, []zipEntry{
 			{name: "index.html", data: htmlContent},
@@ -1084,8 +1089,23 @@ func Test_PreCompression(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, "gzip", h.Get("content-encoding"), "file %s should have gzip encoding", f.Key)
 
-				// Verify compressed size is smaller
-				assert.True(t, f.Size < uint64(len(htmlContent)), "compressed size should be smaller")
+				reader, _, err := storage.GetFile(ctx, config.Bucket, f.Key)
+				assert.NoError(t, err)
+				compressedData, err := io.ReadAll(reader)
+				assert.NoError(t, err)
+				assert.NoError(t, reader.Close())
+
+				name := path.Base(f.Key)
+				require.Contains(t, wantByName, name)
+				want := wantByName[name]
+				assert.True(t, len(compressedData) < len(want), "compressed size should be smaller")
+
+				gzReader, err := gzip.NewReader(bytes.NewReader(compressedData))
+				assert.NoError(t, err)
+				decompressed, err := io.ReadAll(gzReader)
+				assert.NoError(t, err)
+				assert.NoError(t, gzReader.Close())
+				assert.Equal(t, want, decompressed)
 			}
 		})
 	})
@@ -1212,14 +1232,11 @@ func Test_PreCompression(t *testing.T) {
 		storage, _ := NewMemStorage()
 		config := emptyConfig()
 		config.PreCompressEnabled = true
-		config.PreCompressMinSize = 10
+		config.PreCompressMinSize = 0
 		config.PreCompressExtensions = []string{".html"}
 
-		// Random/incompressible data that gzip can't compress well
-		incompressibleData := make([]byte, 100)
-		for i := range incompressibleData {
-			incompressibleData[i] = byte(i * 17 % 256)
-		}
+		// Empty input has gzip framing overhead, so it deterministically should not be stored compressed.
+		incompressibleData := []byte{}
 
 		withZip(t, storage, config, []zipEntry{
 			{name: "random.html", data: incompressibleData},
@@ -1237,12 +1254,8 @@ func Test_PreCompression(t *testing.T) {
 			storedData, _ := io.ReadAll(reader)
 			reader.Close()
 
-			if h.Get("content-encoding") == "" {
-				// Not compressed - verify original data
-				assert.Equal(t, incompressibleData, storedData)
-			}
-			// If it was compressed, that's also fine - the test is that we don't
-			// store a larger compressed version
+			assert.Empty(t, h.Get("content-encoding"), "larger compressed output should not be stored")
+			assert.Equal(t, incompressibleData, storedData)
 		})
 	})
 
