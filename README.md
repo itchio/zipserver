@@ -34,6 +34,7 @@ Pre-compression is disabled by default. When enabled, matching files are gzip-co
 | `PreCompressEnabled` | Enable gzip pre-compression during extract. | `false` |
 | `PreCompressMinSize` | Minimum file size in bytes before attempting compression. | `1024` |
 | `PreCompressMaxConcurrent` | Maximum number of files pre-compressed at once across the process. | `1` |
+| `PreCompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `7` |
 | `PreCompressExtensions` | File extensions eligible for pre-compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck"]` |
 
 ## Limits

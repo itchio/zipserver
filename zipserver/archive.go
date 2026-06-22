@@ -475,11 +475,11 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 			}
 		}
 
-	} else if strings.HasSuffix(key, ".br") {
+	} else if before, ok := strings.CutSuffix(key, ".br"); ok {
 		// there is no way to detect a brotli stream by content, so we assume if it ends if .br then it's brotli
 		// this path is used for Unity 2020 webgl games built with brotli compression
 		resource.contentEncoding = "br"
-		realMimeType := mime.TypeByExtension(path.Ext(strings.TrimSuffix(key, ".br")))
+		realMimeType := mime.TypeByExtension(path.Ext(before))
 
 		if realMimeType != "" {
 			mimeType = realMimeType

@@ -177,70 +177,28 @@ func TestShouldPreCompress(t *testing.T) {
 	}
 }
 
-func TestGzipCompress(t *testing.T) {
-	t.Run("valid compression", func(t *testing.T) {
-		// Use compressible data (repetitive text compresses well)
-		input := bytes.Repeat([]byte("Hello, World! This is a test of compression. "), 100)
+func TestEffectivePreCompressLevel(t *testing.T) {
+	cases := []struct {
+		name   string
+		config *Config
+		want   int
+	}{
+		{"nil config", nil, defaultPreCompressLevel},
+		{"unset (zero) falls back to default", &Config{}, defaultPreCompressLevel},
+		{"configured valid level", &Config{PreCompressLevel: 3}, 3},
+		{"best compression", &Config{PreCompressLevel: gzip.BestCompression}, gzip.BestCompression},
+		{"huffman only", &Config{PreCompressLevel: gzip.HuffmanOnly}, gzip.HuffmanOnly},
+		{"above range falls back to default", &Config{PreCompressLevel: 10}, defaultPreCompressLevel},
+		{"below range falls back to default", &Config{PreCompressLevel: -3}, defaultPreCompressLevel},
+	}
 
-		compressed, err := gzipCompress(input)
-		if err != nil {
-			t.Fatalf("gzipCompress failed: %v", err)
-		}
-
-		if len(compressed) >= len(input) {
-			t.Errorf("compressed data (%d bytes) should be smaller than input (%d bytes)", len(compressed), len(input))
-		}
-	})
-
-	t.Run("decompression verification", func(t *testing.T) {
-		input := []byte("Test data for compression and decompression verification")
-
-		compressed, err := gzipCompress(input)
-		if err != nil {
-			t.Fatalf("gzipCompress failed: %v", err)
-		}
-
-		// Decompress and verify
-		reader, err := gzip.NewReader(bytes.NewReader(compressed))
-		if err != nil {
-			t.Fatalf("gzip.NewReader failed: %v", err)
-		}
-		defer reader.Close()
-
-		decompressed, err := io.ReadAll(reader)
-		if err != nil {
-			t.Fatalf("io.ReadAll failed: %v", err)
-		}
-
-		if !bytes.Equal(decompressed, input) {
-			t.Errorf("decompressed data does not match input")
-		}
-	})
-
-	t.Run("empty input", func(t *testing.T) {
-		input := []byte{}
-
-		compressed, err := gzipCompress(input)
-		if err != nil {
-			t.Fatalf("gzipCompress failed on empty input: %v", err)
-		}
-
-		// Decompress and verify it's empty
-		reader, err := gzip.NewReader(bytes.NewReader(compressed))
-		if err != nil {
-			t.Fatalf("gzip.NewReader failed: %v", err)
-		}
-		defer reader.Close()
-
-		decompressed, err := io.ReadAll(reader)
-		if err != nil {
-			t.Fatalf("io.ReadAll failed: %v", err)
-		}
-
-		if len(decompressed) != 0 {
-			t.Errorf("decompressed empty input should be empty, got %d bytes", len(decompressed))
-		}
-	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := effectivePreCompressLevel(tc.config); got != tc.want {
+				t.Errorf("effectivePreCompressLevel = %d, want %d", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestPreCompressStreamToTemp(t *testing.T) {

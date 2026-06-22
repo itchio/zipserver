@@ -1,7 +1,6 @@
 package zipserver
 
 import (
-	"bytes"
 	"compress/gzip"
 	"context"
 	"io"
@@ -41,6 +40,7 @@ const maxPreCompressBufferSize = uint64(math.MaxInt64 - 1)
 
 const (
 	defaultPreCompressMaxConcurrent = 1
+	defaultPreCompressLevel         = 7
 	preCompressCopyBufferSize       = 64 * 1024
 )
 
@@ -72,6 +72,18 @@ func effectivePreCompressMaxConcurrent(config *Config) int {
 		return defaultPreCompressMaxConcurrent
 	}
 	return config.PreCompressMaxConcurrent
+}
+
+// effectivePreCompressLevel returns the configured gzip level, falling back to
+// the default when unset (zero) or outside gzip's valid range.
+func effectivePreCompressLevel(config *Config) int {
+	if config == nil || config.PreCompressLevel == 0 {
+		return defaultPreCompressLevel
+	}
+	if config.PreCompressLevel < gzip.HuffmanOnly || config.PreCompressLevel > gzip.BestCompression {
+		return defaultPreCompressLevel
+	}
+	return config.PreCompressLevel
 }
 
 func getPreCompressLimiter(config *Config) *preCompressLimiter {
@@ -193,7 +205,7 @@ func preCompressStreamToTemp(
 
 	var sourceSize uint64
 	limited := limitedReader(reader, expectedSize, &sourceSize)
-	writer, err := gzip.NewWriterLevel(tempFile, gzip.BestCompression)
+	writer, err := gzip.NewWriterLevel(tempFile, effectivePreCompressLevel(config))
 	if err != nil {
 		return nil, false, err
 	}
@@ -229,26 +241,4 @@ func preCompressStreamToTemp(
 		Size:    compressedSize,
 		cleanup: cleanup,
 	}, true, nil
-}
-
-// gzipCompress compresses data using gzip with best compression
-func gzipCompress(data []byte) ([]byte, error) {
-	var buf bytes.Buffer
-	writer, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = writer.Write(data)
-	if err != nil {
-		writer.Close()
-		return nil, err
-	}
-
-	err = writer.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
 }
