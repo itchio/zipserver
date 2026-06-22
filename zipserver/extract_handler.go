@@ -52,7 +52,7 @@ func (o *Operations) Extract(ctx context.Context, params ExtractParams) ExtractR
 			return ExtractResult{Err: fmt.Errorf("failed to create target storage: %v", err)}
 		}
 
-		archiver = NewArchiveExtractorWithTarget(o.config, targetStorage, storageTargetConfig.Bucket)
+		archiver = NewArchiveExtractorWithTarget(o.config, targetStorage, storageTargetConfig)
 	} else {
 		archiver = NewArchiveExtractor(o.config)
 	}

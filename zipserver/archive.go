@@ -51,8 +51,11 @@ func isIndexHtml(filename string) bool {
 type ArchiveExtractor struct {
 	Storage // Source storage (for reading zips)
 	*Config
-	TargetStorage Storage // Optional: target storage for uploads (if nil, uses source)
-	TargetBucket  string  // Optional: target bucket (if empty, uses config.Bucket)
+	TargetStorage    Storage            // Optional: target storage for uploads (if nil, uses source)
+	TargetBucket     string             // Optional: target bucket (if empty, uses config.Bucket)
+	ExtractPrefix    string             // Destination base prefix for extracted files.
+	ExtractPrefixSet bool               // Allows an explicit empty destination prefix.
+	Compression      *CompressionConfig // Compression policy for extracted files.
 }
 
 // getDestinationStorage returns the storage where extracted files are written
@@ -71,6 +74,13 @@ func (a *ArchiveExtractor) getDestinationBucket() string {
 	return a.Bucket
 }
 
+func (a *ArchiveExtractor) getExtractPrefix() string {
+	if a.ExtractPrefixSet {
+		return a.ExtractPrefix
+	}
+	return a.Config.ExtractPrefix
+}
+
 // ExtractedFile represents a file extracted from a .zip into a GCS bucket
 type ExtractedFile struct {
 	Key      string
@@ -87,12 +97,17 @@ func NewArchiveExtractor(config *Config) *ArchiveExtractor {
 		log.Fatal("Failed to create storage:", err)
 	}
 
-	return &ArchiveExtractor{Storage: storage, Config: config}
+	return &ArchiveExtractor{
+		Storage:          storage,
+		Config:           config,
+		ExtractPrefix:    config.ExtractPrefix,
+		ExtractPrefixSet: true,
+	}
 }
 
 // NewArchiveExtractorWithTarget creates an archiver that reads from source storage
 // but writes to a different target storage
-func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, targetBucket string) *ArchiveExtractor {
+func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, targetConfig *StorageConfig) *ArchiveExtractor {
 	storage, err := NewGcsStorage(config)
 
 	if storage == nil {
@@ -100,10 +115,13 @@ func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, target
 	}
 
 	return &ArchiveExtractor{
-		Storage:       storage,
-		Config:        config,
-		TargetStorage: targetStorage,
-		TargetBucket:  targetBucket,
+		Storage:          storage,
+		Config:           config,
+		TargetStorage:    targetStorage,
+		TargetBucket:     targetConfig.Bucket,
+		ExtractPrefix:    targetConfig.EffectiveExtractPrefix(config.ExtractPrefix),
+		ExtractPrefixSet: true,
+		Compression:      targetConfig.CompressionConfig(),
 	}
 }
 
@@ -507,9 +525,8 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 		injected = true
 	}
 
-	// Pre-compress if configured and applicable
-	if resource.contentEncoding == "" && shouldPreCompress(resource.key, expectedSize, a.Config) {
-		compressedFile, usedCompressed, err := preCompressStreamToTemp(ctx, reader, expectedSize, a.Config)
+	if resource.contentEncoding == "" && shouldCompress(resource.key, expectedSize, a.Compression) {
+		compressedFile, usedCompressed, err := compressStreamToTemp(ctx, reader, expectedSize, a.Compression)
 		if err != nil {
 			if errors.Is(err, ErrLimitExceeded) {
 				return UploadFileResult{Error: fmt.Errorf("zip entry exceeds declared size (max %d bytes)", expectedSize), Key: resource.key}
@@ -578,7 +595,7 @@ func (a *ArchiveExtractor) ExtractZip(
 	}
 
 	defer os.Remove(fname)
-	prefix = path.Join(a.ExtractPrefix, prefix)
+	prefix = path.Join(a.getExtractPrefix(), prefix)
 	return a.sendZipExtracted(ctx, prefix, fname, limits)
 }
 

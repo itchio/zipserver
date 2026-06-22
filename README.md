@@ -25,17 +25,24 @@ Create a config file `zipserver.json`:
 
 More config settings can be found in `zipserver/config.go`.
 
-### Pre-compression settings
+### Target extract settings
 
-Pre-compression is disabled by default. When enabled, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller.
+Storage targets can override the base extract prefix used for files extracted
+to that target. If a target omits `ExtractPrefix`, it inherits the global
+`ExtractPrefix`. Set target `ExtractPrefix` to `"."` to extract at the bucket
+root, so the HTTP `prefix` parameter is used directly.
 
-| Config field | Description | Default |
+### Target compression settings
+
+Compression is configured per storage target. Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller.
+
+| Storage target field | Description | Default |
 | --- | --- | --- |
-| `PreCompressEnabled` | Enable gzip pre-compression during extract. | `false` |
-| `PreCompressMinSize` | Minimum file size in bytes before attempting compression. | `1024` |
-| `PreCompressMaxConcurrent` | Maximum number of files pre-compressed at once across the process. | `1` |
-| `PreCompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `7` |
-| `PreCompressExtensions` | File extensions eligible for pre-compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck"]` |
+| `CompressEnabled` | Enable gzip compression for files extracted to this target. | `false` |
+| `CompressMinSize` | Minimum file size in bytes before attempting compression. | `1024` |
+| `CompressMaxConcurrent` | Maximum number of files compressed at once across the process. | `1` |
+| `CompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `7` |
+| `CompressExtensions` | File extensions eligible for compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck",".json",".mem",".gltf"]` |
 
 ## Limits
 
@@ -166,7 +173,7 @@ curl -X POST "http://localhost:8090/extract" \
 **Behavior:**
 - Matches `index.html` files case-insensitively (e.g., `INDEX.HTML`, `Index.Html`)
 - Injects into all `index.html` files, including nested ones (e.g., `subdir/index.html`)
-- Skips pre-compressed files (gzip/brotli) since appending to compressed streams would corrupt them
+- Skips compressed files (gzip/brotli) since appending to compressed streams would corrupt them
 - The response includes `"Injected": true` for each file that received the footer
 
 ## Copy
@@ -378,7 +385,12 @@ Example target entries:
       "Type": "GCS",
       "GCSPrivateKeyPath": "/path/to/target/key.pem",
       "GCSClientEmail": "target-service@project.iam.gserviceaccount.com",
-      "Bucket": "my-gcs-backup-bucket"
+      "Bucket": "my-gcs-backup-bucket",
+      "ExtractPrefix": "public",
+      "CompressEnabled": true,
+      "CompressExtensions": [".html", ".js", ".css", ".svg", ".wasm"],
+      "CompressMinSize": 1024,
+      "CompressLevel": 7
     }
   ]
 }

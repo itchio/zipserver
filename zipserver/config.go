@@ -102,6 +102,17 @@ type StorageConfig struct {
 	S3Region      string `json:",omitempty"`
 
 	Bucket string `json:",omitempty"`
+
+	// ExtractPrefix overrides the global extract prefix for this target.
+	// Empty inherits Config.ExtractPrefix. Use "." to extract at the bucket root.
+	ExtractPrefix string `json:",omitempty"`
+
+	// Compression settings for files extracted to this target.
+	CompressEnabled       bool     `json:",omitempty"`
+	CompressExtensions    []string `json:",omitempty"`
+	CompressMinSize       int64    `json:",omitempty"`
+	CompressMaxConcurrent int      `json:",omitempty"`
+	CompressLevel         int      `json:",omitempty"`
 }
 
 // TODO: eventually this should be a factory that can return different storage types
@@ -184,18 +195,21 @@ type Config struct {
 	// Places that can be written to
 	StorageTargets []StorageConfig `json:",omitempty"`
 
-	// Pre-compression settings
-	PreCompressEnabled       bool     `json:",omitempty"`
-	PreCompressExtensions    []string `json:",omitempty"`
-	PreCompressMinSize       int64    `json:",omitempty"`
-	PreCompressMaxConcurrent int      `json:",omitempty"`
-	PreCompressLevel         int      `json:",omitempty"`
-
 	// Version info (set at runtime, not from config file)
 	Version   string `json:"-"`
 	CommitSHA string `json:"-"`
 	BuildTime string `json:"-"`
 }
+
+type CompressionConfig struct {
+	Enabled       bool
+	Extensions    []string
+	MinSize       int64
+	MaxConcurrent int
+	Level         int
+}
+
+var defaultCompressExtensions = []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck", ".json", ".mem", ".gltf"}
 
 // GetStorageTargetByName returns the storage target with the given name from the config.
 // If no such target exists, it returns nil.
@@ -222,11 +236,42 @@ var defaultConfig = Config{
 	FileGetTimeout:           Duration(1 * time.Minute),
 	FilePutTimeout:           Duration(1 * time.Minute),
 	AsyncNotificationTimeout: Duration(5 * time.Second),
+}
 
-	PreCompressMinSize:       1024, // 1KB minimum
-	PreCompressExtensions:    []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck"},
-	PreCompressMaxConcurrent: defaultPreCompressMaxConcurrent,
-	PreCompressLevel:         defaultPreCompressLevel,
+func (s *StorageConfig) CompressionConfig() *CompressionConfig {
+	if s == nil {
+		return nil
+	}
+	config := &CompressionConfig{
+		Enabled:       s.CompressEnabled,
+		Extensions:    s.CompressExtensions,
+		MinSize:       s.CompressMinSize,
+		MaxConcurrent: s.CompressMaxConcurrent,
+		Level:         s.CompressLevel,
+	}
+	if len(config.Extensions) == 0 {
+		config.Extensions = defaultCompressExtensions
+	}
+	if config.MinSize == 0 {
+		config.MinSize = 1024
+	}
+	if config.MaxConcurrent == 0 {
+		config.MaxConcurrent = defaultCompressMaxConcurrent
+	}
+	if config.Level == 0 {
+		config.Level = defaultCompressLevel
+	}
+	return config
+}
+
+func (s *StorageConfig) EffectiveExtractPrefix(globalPrefix string) string {
+	if s == nil || s.ExtractPrefix == "" {
+		return globalPrefix
+	}
+	if s.ExtractPrefix == "." || s.ExtractPrefix == "/" {
+		return ""
+	}
+	return s.ExtractPrefix
 }
 
 // Duration adds JSON (de)serialization to time.Duration.

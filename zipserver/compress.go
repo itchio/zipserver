@@ -12,7 +12,7 @@ import (
 )
 
 // alreadyCompressedExtensions contains file extensions that are already compressed
-// and should not be pre-compressed
+// and should not be compressed
 var alreadyCompressedExtensions = map[string]bool{
 	".gz":   true,
 	".br":   true,
@@ -35,22 +35,22 @@ var alreadyCompressedExtensions = map[string]bool{
 }
 
 // io.LimitReader takes int64, so this is the largest safe size we can pass
-// without overflow in the pre-compression read path.
-const maxPreCompressBufferSize = uint64(math.MaxInt64 - 1)
+// without overflow in the compression read path.
+const maxCompressBufferSize = uint64(math.MaxInt64 - 1)
 
 const (
-	defaultPreCompressMaxConcurrent = 1
-	defaultPreCompressLevel         = 7
-	preCompressCopyBufferSize       = 64 * 1024
+	defaultCompressMaxConcurrent = 1
+	defaultCompressLevel         = 7
+	compressCopyBufferSize       = 64 * 1024
 )
 
-type preCompressedFile struct {
+type compressedFile struct {
 	Reader  *os.File
 	Size    uint64
 	cleanup func()
 }
 
-func (f *preCompressedFile) Cleanup() {
+func (f *compressedFile) Cleanup() {
 	if f == nil || f.cleanup == nil {
 		return
 	}
@@ -58,52 +58,52 @@ func (f *preCompressedFile) Cleanup() {
 	f.cleanup = nil
 }
 
-type preCompressLimiter struct {
+type compressLimiter struct {
 	slots chan struct{}
 }
 
 var (
-	preCompressLimitersMu sync.Mutex
-	preCompressLimiters   = map[int]*preCompressLimiter{}
+	compressLimitersMu sync.Mutex
+	compressLimiters   = map[int]*compressLimiter{}
 )
 
-func effectivePreCompressMaxConcurrent(config *Config) int {
-	if config == nil || config.PreCompressMaxConcurrent <= 0 {
-		return defaultPreCompressMaxConcurrent
+func effectiveCompressMaxConcurrent(config *CompressionConfig) int {
+	if config == nil || config.MaxConcurrent <= 0 {
+		return defaultCompressMaxConcurrent
 	}
-	return config.PreCompressMaxConcurrent
+	return config.MaxConcurrent
 }
 
-// effectivePreCompressLevel returns the configured gzip level, falling back to
+// effectiveCompressLevel returns the configured gzip level, falling back to
 // the default when unset (zero) or outside gzip's valid range.
-func effectivePreCompressLevel(config *Config) int {
-	if config == nil || config.PreCompressLevel == 0 {
-		return defaultPreCompressLevel
+func effectiveCompressLevel(config *CompressionConfig) int {
+	if config == nil || config.Level == 0 {
+		return defaultCompressLevel
 	}
-	if config.PreCompressLevel < gzip.HuffmanOnly || config.PreCompressLevel > gzip.BestCompression {
-		return defaultPreCompressLevel
+	if config.Level < gzip.HuffmanOnly || config.Level > gzip.BestCompression {
+		return defaultCompressLevel
 	}
-	return config.PreCompressLevel
+	return config.Level
 }
 
-func getPreCompressLimiter(config *Config) *preCompressLimiter {
-	maxConcurrent := effectivePreCompressMaxConcurrent(config)
+func getCompressLimiter(config *CompressionConfig) *compressLimiter {
+	maxConcurrent := effectiveCompressMaxConcurrent(config)
 
-	preCompressLimitersMu.Lock()
-	defer preCompressLimitersMu.Unlock()
+	compressLimitersMu.Lock()
+	defer compressLimitersMu.Unlock()
 
-	if limiter, ok := preCompressLimiters[maxConcurrent]; ok {
+	if limiter, ok := compressLimiters[maxConcurrent]; ok {
 		return limiter
 	}
 
-	limiter := &preCompressLimiter{
+	limiter := &compressLimiter{
 		slots: make(chan struct{}, maxConcurrent),
 	}
-	preCompressLimiters[maxConcurrent] = limiter
+	compressLimiters[maxConcurrent] = limiter
 	return limiter
 }
 
-func (l *preCompressLimiter) acquire(ctx context.Context) error {
+func (l *compressLimiter) acquire(ctx context.Context) error {
 	select {
 	case l.slots <- struct{}{}:
 		return nil
@@ -112,29 +112,29 @@ func (l *preCompressLimiter) acquire(ctx context.Context) error {
 	}
 }
 
-func (l *preCompressLimiter) release() {
+func (l *compressLimiter) release() {
 	select {
 	case <-l.slots:
 	default:
 	}
 }
 
-// shouldPreCompress checks if a file should be pre-compressed based on
+// shouldCompress checks if a file should be compressed based on
 // filename, size, and configuration
-func shouldPreCompress(filename string, size uint64, config *Config) bool {
+func shouldCompress(filename string, size uint64, config *CompressionConfig) bool {
 	if config == nil {
 		return false
 	}
 
-	if !config.PreCompressEnabled {
+	if !config.Enabled {
 		return false
 	}
 
-	if size > maxPreCompressBufferSize {
+	if size > maxCompressBufferSize {
 		return false
 	}
 
-	if config.PreCompressMinSize > 0 && size < uint64(config.PreCompressMinSize) {
+	if config.MinSize > 0 && size < uint64(config.MinSize) {
 		return false
 	}
 
@@ -149,7 +149,7 @@ func shouldPreCompress(filename string, size uint64, config *Config) bool {
 	}
 
 	// Check if extension matches configured extensions
-	for _, allowedExt := range config.PreCompressExtensions {
+	for _, allowedExt := range config.Extensions {
 		if ext == normalizeExtension(allowedExt) {
 			return true
 		}
@@ -169,15 +169,15 @@ func normalizeExtension(ext string) string {
 	return ext
 }
 
-// preCompressStreamToTemp streams data to a temporary gzip file and returns it
+// compressStreamToTemp streams data to a temporary gzip file and returns it
 // only if the compressed payload is smaller than the input payload.
-func preCompressStreamToTemp(
+func compressStreamToTemp(
 	ctx context.Context,
 	reader io.Reader,
 	expectedSize uint64,
-	config *Config,
-) (*preCompressedFile, bool, error) {
-	limiter := getPreCompressLimiter(config)
+	config *CompressionConfig,
+) (*compressedFile, bool, error) {
+	limiter := getCompressLimiter(config)
 	if err := limiter.acquire(ctx); err != nil {
 		return nil, false, err
 	}
@@ -187,7 +187,7 @@ func preCompressStreamToTemp(
 		return nil, false, err
 	}
 
-	tempFile, err := os.CreateTemp(tmpDir, "zipserver-precompress-*.gz")
+	tempFile, err := os.CreateTemp(tmpDir, "zipserver-compress-*.gz")
 	if err != nil {
 		return nil, false, err
 	}
@@ -205,12 +205,12 @@ func preCompressStreamToTemp(
 
 	var sourceSize uint64
 	limited := limitedReader(reader, expectedSize, &sourceSize)
-	writer, err := gzip.NewWriterLevel(tempFile, effectivePreCompressLevel(config))
+	writer, err := gzip.NewWriterLevel(tempFile, effectiveCompressLevel(config))
 	if err != nil {
 		return nil, false, err
 	}
 
-	buffer := make([]byte, preCompressCopyBufferSize)
+	buffer := make([]byte, compressCopyBufferSize)
 	_, err = io.CopyBuffer(writer, limited, buffer)
 	if err != nil {
 		_ = writer.Close()
@@ -236,7 +236,7 @@ func preCompressStreamToTemp(
 	}
 
 	cleanupOnError = false
-	return &preCompressedFile{
+	return &compressedFile{
 		Reader:  tempFile,
 		Size:    compressedSize,
 		cleanup: cleanup,

@@ -10,18 +10,18 @@ import (
 	"testing"
 )
 
-func TestShouldPreCompress(t *testing.T) {
-	baseConfig := &Config{
-		PreCompressEnabled:    true,
-		PreCompressMinSize:    1024,
-		PreCompressExtensions: []string{".html", ".js", ".css", ".svg"},
+func TestShouldCompress(t *testing.T) {
+	baseConfig := &CompressionConfig{
+		Enabled:    true,
+		MinSize:    1024,
+		Extensions: []string{".html", ".js", ".css", ".svg"},
 	}
 
 	tests := []struct {
 		name     string
 		filename string
 		size     uint64
-		config   *Config
+		config   *CompressionConfig
 		want     bool
 	}{
 		{
@@ -35,10 +35,10 @@ func TestShouldPreCompress(t *testing.T) {
 			name:     "feature disabled",
 			filename: "test.html",
 			size:     2000,
-			config: &Config{
-				PreCompressEnabled:    false,
-				PreCompressMinSize:    1024,
-				PreCompressExtensions: []string{".html"},
+			config: &CompressionConfig{
+				Enabled:    false,
+				MinSize:    1024,
+				Extensions: []string{".html"},
 			},
 			want: false,
 		},
@@ -130,10 +130,10 @@ func TestShouldPreCompress(t *testing.T) {
 			name:     "configured extension without dot",
 			filename: "index.html",
 			size:     2000,
-			config: &Config{
-				PreCompressEnabled:    true,
-				PreCompressMinSize:    1024,
-				PreCompressExtensions: []string{"html"},
+			config: &CompressionConfig{
+				Enabled:    true,
+				MinSize:    1024,
+				Extensions: []string{"html"},
 			},
 			want: true,
 		},
@@ -159,7 +159,7 @@ func TestShouldPreCompress(t *testing.T) {
 			want:     false,
 		},
 		{
-			name:     "too large to safely pre-compress",
+			name:     "too large to safely compress",
 			filename: "test.html",
 			size:     uint64(math.MaxInt64),
 			config:   baseConfig,
@@ -169,50 +169,50 @@ func TestShouldPreCompress(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shouldPreCompress(tt.filename, tt.size, tt.config)
+			got := shouldCompress(tt.filename, tt.size, tt.config)
 			if got != tt.want {
-				t.Errorf("shouldPreCompress(%q, %d) = %v, want %v", tt.filename, tt.size, got, tt.want)
+				t.Errorf("shouldCompress(%q, %d) = %v, want %v", tt.filename, tt.size, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestEffectivePreCompressLevel(t *testing.T) {
+func TestEffectiveCompressLevel(t *testing.T) {
 	cases := []struct {
 		name   string
-		config *Config
+		config *CompressionConfig
 		want   int
 	}{
-		{"nil config", nil, defaultPreCompressLevel},
-		{"unset (zero) falls back to default", &Config{}, defaultPreCompressLevel},
-		{"configured valid level", &Config{PreCompressLevel: 3}, 3},
-		{"best compression", &Config{PreCompressLevel: gzip.BestCompression}, gzip.BestCompression},
-		{"huffman only", &Config{PreCompressLevel: gzip.HuffmanOnly}, gzip.HuffmanOnly},
-		{"above range falls back to default", &Config{PreCompressLevel: 10}, defaultPreCompressLevel},
-		{"below range falls back to default", &Config{PreCompressLevel: -3}, defaultPreCompressLevel},
+		{"nil config", nil, defaultCompressLevel},
+		{"unset (zero) falls back to default", &CompressionConfig{}, defaultCompressLevel},
+		{"configured valid level", &CompressionConfig{Level: 3}, 3},
+		{"best compression", &CompressionConfig{Level: gzip.BestCompression}, gzip.BestCompression},
+		{"huffman only", &CompressionConfig{Level: gzip.HuffmanOnly}, gzip.HuffmanOnly},
+		{"above range falls back to default", &CompressionConfig{Level: 10}, defaultCompressLevel},
+		{"below range falls back to default", &CompressionConfig{Level: -3}, defaultCompressLevel},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := effectivePreCompressLevel(tc.config); got != tc.want {
-				t.Errorf("effectivePreCompressLevel = %d, want %d", got, tc.want)
+			if got := effectiveCompressLevel(tc.config); got != tc.want {
+				t.Errorf("effectiveCompressLevel = %d, want %d", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestPreCompressStreamToTemp(t *testing.T) {
+func TestCompressStreamToTemp(t *testing.T) {
 	t.Run("returns compressed temp file when smaller", func(t *testing.T) {
 		input := bytes.Repeat([]byte("Hello, World! This is compressible data. "), 200)
 
-		compressed, used, err := preCompressStreamToTemp(
+		compressed, used, err := compressStreamToTemp(
 			context.Background(),
 			bytes.NewReader(input),
 			uint64(len(input)),
-			&Config{PreCompressMaxConcurrent: 1},
+			&CompressionConfig{MaxConcurrent: 1},
 		)
 		if err != nil {
-			t.Fatalf("preCompressStreamToTemp failed: %v", err)
+			t.Fatalf("compressStreamToTemp failed: %v", err)
 		}
 		if !used {
 			t.Fatalf("expected compression to be used")
@@ -237,14 +237,14 @@ func TestPreCompressStreamToTemp(t *testing.T) {
 	t.Run("skips when compressed output is larger", func(t *testing.T) {
 		input := []byte{}
 
-		compressed, used, err := preCompressStreamToTemp(
+		compressed, used, err := compressStreamToTemp(
 			context.Background(),
 			bytes.NewReader(input),
 			uint64(len(input)),
-			&Config{PreCompressMaxConcurrent: 1},
+			&CompressionConfig{MaxConcurrent: 1},
 		)
 		if err != nil {
-			t.Fatalf("preCompressStreamToTemp failed: %v", err)
+			t.Fatalf("compressStreamToTemp failed: %v", err)
 		}
 		if used {
 			t.Fatalf("expected compression to be skipped")
@@ -257,11 +257,11 @@ func TestPreCompressStreamToTemp(t *testing.T) {
 	t.Run("returns limit exceeded error when source exceeds expected size", func(t *testing.T) {
 		input := bytes.Repeat([]byte("x"), 2048)
 
-		_, _, err := preCompressStreamToTemp(
+		_, _, err := compressStreamToTemp(
 			context.Background(),
 			bytes.NewReader(input),
 			128,
-			&Config{PreCompressMaxConcurrent: 1},
+			&CompressionConfig{MaxConcurrent: 1},
 		)
 		if !errors.Is(err, ErrLimitExceeded) {
 			t.Fatalf("expected ErrLimitExceeded, got %v", err)
