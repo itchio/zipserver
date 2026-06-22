@@ -279,6 +279,15 @@ Parameters:
 
 Objects with `Content-Encoding: gzip` are decoded before bytes are returned. Unsupported encodings return an error.
 
+**CLI:**
+```bash
+# Raw bytes go to stdout; metadata (content type, encoding, size) goes to stderr
+zipserver peek --key games/example/index.html --target production > index.html
+
+# Override the byte count
+zipserver peek --key games/example/index.html --bytes 1024
+```
+
 ## List
 
 List files in a zip archive without extracting. Returns JSON with filenames and uncompressed sizes.

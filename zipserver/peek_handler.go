@@ -20,6 +20,17 @@ func effectiveMaxPeekBytes(config *Config) uint64 {
 	return config.MaxPeekBytes
 }
 
+// DefaultPeekBytes returns the default number of bytes a peek reads, clamped to
+// the configured MaxPeekBytes so a bare request still works when MaxPeekBytes is
+// configured below defaultPeekBytes.
+func DefaultPeekBytes(config *Config) uint64 {
+	maxBytes := defaultPeekBytes
+	if max := effectiveMaxPeekBytes(config); maxBytes > max {
+		maxBytes = max
+	}
+	return maxBytes
+}
+
 func resolveReadStorage(config *Config, targetName string) (Storage, string, error) {
 	if targetName == "" {
 		storage, err := NewGcsStorage(config)
@@ -117,13 +128,8 @@ func peekHandler(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	maxBytes := defaultPeekBytes
-	if max := effectiveMaxPeekBytes(globalConfig); maxBytes > max {
-		// Clamp the default so a bare request still works when MaxPeekBytes is
-		// configured below defaultPeekBytes. An explicit oversized bytes value
-		// is still rejected by Peek.
-		maxBytes = max
-	}
+	// An explicit oversized bytes value is still rejected by Peek.
+	maxBytes := DefaultPeekBytes(globalConfig)
 	if bytesStr := params.Get("bytes"); bytesStr != "" {
 		maxBytes, err = strconv.ParseUint(bytesStr, 10, 64)
 		if err != nil {
