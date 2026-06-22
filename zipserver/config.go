@@ -104,7 +104,7 @@ type StorageConfig struct {
 	Bucket string `json:",omitempty"`
 
 	// ExtractPrefix overrides the global extract prefix for this target.
-	// Empty inherits Config.ExtractPrefix. Use "." to extract at the bucket root.
+	// Empty inherits Config.ExtractPrefix. Use "." or "/" to extract at the bucket root.
 	ExtractPrefix string `json:",omitempty"`
 
 	// Compression settings for files extracted to this target.
@@ -209,7 +209,7 @@ type CompressionConfig struct {
 	Level         int
 }
 
-var defaultCompressExtensions = []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck", ".json", ".mem", ".gltf"}
+var defaultCompressExtensions = []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck", ".json", ".mem", ".gltf", ".data", ".symbols", ".ttf", ".otf", ".map", ".xml", ".txt", ".symbolmap", ".obj", ".bin"}
 
 // GetStorageTargetByName returns the storage target with the given name from the config.
 // If no such target exists, it returns nil.

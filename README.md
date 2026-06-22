@@ -42,7 +42,7 @@ Compression is configured per storage target. Primary/default extraction does no
 | `CompressMinSize` | Minimum file size in bytes before attempting compression. | `1024` |
 | `CompressMaxConcurrent` | Maximum number of files compressed at once across the process. | `1` |
 | `CompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `7` |
-| `CompressExtensions` | File extensions eligible for compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck",".json",".mem",".gltf"]` |
+| `CompressExtensions` | File extensions eligible for compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck",".json",".mem",".gltf",".data",".symbols",".ttf",".otf",".map",".xml",".txt",".symbolmap",".obj",".bin"]` |
 
 ## Limits
 
