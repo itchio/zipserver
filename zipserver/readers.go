@@ -15,7 +15,7 @@ type LimitExceededError struct {
 }
 
 func (e *LimitExceededError) Error() string {
-	return fmt.Sprintf("file too large (max %d bytes)", e.MaxBytes)
+	return fmt.Sprintf("file too large (max %s)", formatBytes(float64(e.MaxBytes)))
 }
 
 func (e *LimitExceededError) Unwrap() error {

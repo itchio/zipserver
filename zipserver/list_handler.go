@@ -153,7 +153,7 @@ func checkContentLength(maxBytes uint64, contentLength int64) error {
 		return nil
 	}
 	if uint64(contentLength) > maxBytes {
-		return fmt.Errorf("zip too large (max %d bytes)", maxBytes)
+		return fmt.Errorf("zip too large (%s, max %s)", formatBytes(float64(contentLength)), formatBytes(float64(maxBytes)))
 	}
 	return nil
 }

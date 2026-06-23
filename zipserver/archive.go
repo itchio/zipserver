@@ -178,7 +178,7 @@ func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string, maxZipSize 
 	}
 	if err != nil {
 		if errors.Is(err, ErrLimitExceeded) {
-			return "", fmt.Errorf("zip too large (max %d bytes)", maxZipSize)
+			return "", fmt.Errorf("zip too large (max %s)", formatBytes(float64(maxZipSize)))
 		}
 		return "", err
 	}
@@ -365,7 +365,7 @@ func (a *ArchiveExtractor) sendZipExtracted(
 		byteCount += effectiveSize
 
 		if limits.MaxTotalSize > 0 && byteCount > limits.MaxTotalSize {
-			return nil, fmt.Errorf("Extracted zip too large (max %v bytes)", limits.MaxTotalSize)
+			return nil, fmt.Errorf("Extracted zip too large (max %s)", formatBytes(float64(limits.MaxTotalSize)))
 		}
 
 		fileList = append(fileList, file)
@@ -611,7 +611,7 @@ func (a *ArchiveExtractor) UploadZipFromFile(
 			return nil, err
 		}
 		if info.Size() > int64(limits.MaxInputZipSize) {
-			return nil, fmt.Errorf("zip too large (max %d bytes)", limits.MaxInputZipSize)
+			return nil, fmt.Errorf("zip too large (%s, max %s)", formatBytes(float64(info.Size())), formatBytes(float64(limits.MaxInputZipSize)))
 		}
 	}
 	prefix = path.Join("_zipserver", prefix)
