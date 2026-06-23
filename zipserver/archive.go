@@ -359,7 +359,7 @@ func (a *ArchiveExtractor) sendZipExtracted(
 		}
 
 		if limits.MaxFileSize > 0 && effectiveSize > limits.MaxFileSize {
-			return nil, fmt.Errorf("Zip contains file that is too large (%s)", file.Name)
+			return nil, fmt.Errorf("Zip contains file that is too large (%s: %s, max %s)", file.Name, formatBytes(float64(effectiveSize)), formatBytes(float64(limits.MaxFileSize)))
 		}
 
 		byteCount += effectiveSize
