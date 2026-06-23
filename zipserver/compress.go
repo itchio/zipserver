@@ -41,7 +41,7 @@ const maxCompressBufferSize = uint64(math.MaxInt64 - 1)
 
 const (
 	defaultCompressMaxConcurrent = 4
-	defaultCompressLevel         = 7
+	defaultCompressLevel         = 5
 	defaultCompressMinSize       = 1024
 	compressCopyBufferSize       = 64 * 1024
 )

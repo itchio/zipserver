@@ -47,7 +47,7 @@ Primary/default extraction does not compress files. When compression is enabled 
 | --- | --- | --- |
 | `CompressEnabled` | Enable gzip compression for files extracted to this target. | `false` |
 | `CompressMinSize` | Minimum file size in bytes before attempting compression. Set to `0` to compress files of any size. | `1024` |
-| `CompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `7` |
+| `CompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `5` |
 | `CompressExtensions` | File extensions eligible for compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck",".json",".mem",".gltf",".data",".symbols",".ttf",".otf",".map",".xml",".txt",".symbolmap",".obj",".bin"]` |
 
 ## Limits
@@ -396,7 +396,7 @@ Example target entries:
       "CompressEnabled": true,
       "CompressExtensions": [".html", ".js", ".css", ".svg", ".wasm"],
       "CompressMinSize": 1024,
-      "CompressLevel": 7
+      "CompressLevel": 5
     }
   ]
 }
