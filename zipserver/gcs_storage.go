@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -67,11 +66,9 @@ func (c *GcsStorage) httpClient() (*http.Client, error) {
 	return c.jwtConfig.Client(context.Background()), nil
 }
 
-func (c *GcsStorage) url(bucket, key, logName string) string {
+func (c *GcsStorage) url(bucket, key string) string {
 	// return "http://127.0.0.1:5656"
-	url := baseURL + bucket + "/" + key
-	log.Print(logName + " " + url)
-	return url
+	return baseURL + bucket + "/" + key
 }
 
 // GetFile returns a reader for the contents of resource at bucket/key
@@ -81,7 +78,7 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 		return nil, nil, err
 	}
 
-	url := c.url(bucket, key, "GET")
+	url := c.url(bucket, key)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, nil, err
@@ -112,7 +109,7 @@ func (c *GcsStorage) HeadFile(ctx context.Context, bucket, key string) (http.Hea
 		return nil, err
 	}
 
-	url := c.url(bucket, key, "HEAD")
+	url := c.url(bucket, key)
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
 		return nil, err
@@ -140,7 +137,7 @@ func (c *GcsStorage) PutFile(ctx context.Context, bucket, key string, contents i
 
 	contents = metricsReader(contents, &globalMetrics.TotalBytesUploaded)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.url(bucket, key, "PUT"), contents)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.url(bucket, key), contents)
 	if err != nil {
 		return PutResult{}, err
 	}
@@ -253,7 +250,7 @@ func (c *GcsStorage) GetReaderAt(ctx context.Context, bucket, key string, maxByt
 		return nil, 0, err
 	}
 
-	url := c.url(bucket, key, "HEAD")
+	url := c.url(bucket, key)
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 	if err != nil {
 		return nil, 0, err
@@ -274,12 +271,9 @@ func (c *GcsStorage) GetReaderAt(ctx context.Context, bucket, key string, maxByt
 		return nil, 0, errors.New("server did not return Content-Length")
 	}
 
-	// Use GET URL for the reader
-	getURL := c.url(bucket, key, "GET(range)")
-
 	return &gcsReaderAt{
 		client:   httpClient,
-		url:      getURL,
+		url:      url,
 		size:     size,
 		maxBytes: maxBytes,
 		ctx:      ctx,
@@ -293,7 +287,7 @@ func (c *GcsStorage) DeleteFile(ctx context.Context, bucket, key string) error {
 		return err
 	}
 
-	url := c.url(bucket, key, "DELETE")
+	url := c.url(bucket, key)
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
 		return err

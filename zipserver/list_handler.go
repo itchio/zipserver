@@ -1,15 +1,17 @@
 package zipserver
 
 import (
-	"github.com/klauspost/compress/zip"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/klauspost/compress/zip"
 )
 
 type fileTuple struct {
@@ -36,6 +38,8 @@ func (o *Operations) listFromBucket(ctx context.Context, key string) ListResult 
 	if err != nil {
 		return ListResult{Err: err}
 	}
+
+	log.Printf("List zip: [primary] %s/%s", o.config.Bucket, key)
 
 	readerAt, size, err := storage.GetReaderAt(ctx, o.config.Bucket, key, o.config.MaxInputZipSize)
 	if err != nil {

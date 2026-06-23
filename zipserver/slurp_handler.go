@@ -56,12 +56,9 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 		body = limitedReader(body, params.MaxBytes, &bytesRead)
 	}
 
-	log.Print("Uploading ", contentType, " (size: ", res.ContentLength, ") to ", params.Key)
-	log.Print("ACL: ", params.ACL)
-	log.Print("Content-Disposition: ", params.ContentDisposition)
-
 	var storage Storage
 	var bucket string
+	targetLabel := displayTargetName(params.TargetName)
 
 	if params.TargetName != "" {
 		storageTargetConfig := o.config.GetStorageTargetByName(params.TargetName)
@@ -84,6 +81,10 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 		bucket = o.config.Bucket
 	}
 
+	log.Print("Uploading ", contentType, " (size: ", res.ContentLength, ") to [", targetLabel, "] ", bucket, "/", params.Key)
+	log.Print("ACL: ", params.ACL)
+	log.Print("Content-Disposition: ", params.ContentDisposition)
+
 	putCtx, putCancel := context.WithTimeout(ctx, time.Duration(o.config.FilePutTimeout))
 	defer putCancel()
 
@@ -100,6 +101,7 @@ func (o *Operations) Slurp(ctx context.Context, params SlurpParams) SlurpResult 
 	}
 
 	globalMetrics.TotalSlurpedFiles.Add(1)
+	log.Print("Slurp complete: [", targetLabel, "] ", bucket, "/", params.Key)
 	return SlurpResult{}
 }
 

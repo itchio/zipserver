@@ -53,6 +53,7 @@ type ArchiveExtractor struct {
 	*Config
 	TargetStorage    Storage            // Optional: target storage for uploads (if nil, uses source)
 	TargetBucket     string             // Optional: target bucket (if empty, uses config.Bucket)
+	TargetName       string             // Optional: target label for logging (empty means primary)
 	ExtractPrefix    string             // Destination base prefix for extracted files.
 	ExtractPrefixSet bool               // Allows an explicit empty destination prefix.
 	Compression      *CompressionConfig // Compression policy for extracted files.
@@ -72,6 +73,10 @@ func (a *ArchiveExtractor) getDestinationBucket() string {
 		return a.TargetBucket
 	}
 	return a.Bucket
+}
+
+func (a *ArchiveExtractor) getDestinationLabel() string {
+	return displayTargetName(a.TargetName)
 }
 
 func (a *ArchiveExtractor) getExtractPrefix() string {
@@ -119,6 +124,7 @@ func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, target
 		Config:           config,
 		TargetStorage:    targetStorage,
 		TargetBucket:     targetConfig.Bucket,
+		TargetName:       targetConfig.Name,
 		ExtractPrefix:    targetConfig.EffectiveExtractPrefix(config.ExtractPrefix),
 		ExtractPrefixSet: true,
 		Compression:      targetConfig.CompressionConfig(),
@@ -310,6 +316,8 @@ func (a *ArchiveExtractor) sendZipExtracted(
 		return nil, err
 	}
 
+	log.Printf("Extracting zip to [%s] %s/%s", a.getDestinationLabel(), a.getDestinationBucket(), prefix)
+
 	defer zipReader.Close()
 
 	if len(zipReader.File) > limits.MaxNumFiles {
@@ -442,12 +450,12 @@ func (a *ArchiveExtractor) sendZipExtracted(
 
 	elapsed := time.Since(startTime)
 	if extractError != nil {
-		log.Printf("Upload error after %v: %s", elapsed.Round(time.Millisecond), extractError.Error())
+		log.Printf("Upload error after %v to [%s]: %s", elapsed.Round(time.Millisecond), a.getDestinationLabel(), extractError.Error())
 		a.abortUpload(extractedFiles)
 		return nil, extractError
 	}
 
-	log.Printf("Sent %d files in %v", fileCount, elapsed.Round(time.Millisecond))
+	log.Printf("Extract complete: [%s] sent %d files in %v", a.getDestinationLabel(), fileCount, elapsed.Round(time.Millisecond))
 	return extractedFiles, nil
 }
 
@@ -556,9 +564,9 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 	}
 
 	if injected {
-		log.Printf("Sending: %s (injected)", resource)
+		log.Printf("Sending: [%s] %s (injected)", a.getDestinationLabel(), resource)
 	} else {
-		log.Printf("Sending: %s", resource)
+		log.Printf("Sending: [%s] %s", a.getDestinationLabel(), resource)
 	}
 
 	limited := limitedReader(reader, expectedSize, &resource.size)

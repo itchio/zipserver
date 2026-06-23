@@ -13,6 +13,13 @@ func NewOperations(config *Config) *Operations {
 	return &Operations{config: config}
 }
 
+func displayTargetName(targetName string) string {
+	if targetName != "" {
+		return targetName
+	}
+	return "primary"
+}
+
 // ExtractParams contains parameters for the extract operation
 type ExtractParams struct {
 	Key        string // Storage key of the zip file (mutually exclusive with File)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -70,6 +71,8 @@ func (o *Operations) Peek(ctx context.Context, params PeekParams) PeekResult {
 	if err != nil {
 		return PeekResult{Err: err}
 	}
+
+	log.Printf("Peek: [%s] %s/%s bytes=%d", displayTargetName(params.TargetName), bucket, params.Key, params.MaxBytes)
 
 	getCtx, cancel := context.WithTimeout(ctx, time.Duration(o.config.FileGetTimeout))
 	defer cancel()

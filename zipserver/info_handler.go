@@ -3,6 +3,7 @@ package zipserver
 import (
 	"context"
 	"fmt"
+	"log"
 )
 
 // Info retrieves metadata headers for a file in storage
@@ -35,6 +36,8 @@ func (o *Operations) Info(ctx context.Context, params InfoParams) InfoResult {
 		}
 		bucket = storageTargetConfig.Bucket
 	}
+
+	log.Printf("Info: [%s] %s/%s", displayTargetName(params.TargetName), bucket, params.Key)
 
 	// Check if storage supports HeadFile
 	headable, ok := storage.(HeadableStorage)
