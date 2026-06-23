@@ -57,6 +57,11 @@ func (o *Operations) Extract(ctx context.Context, params ExtractParams) ExtractR
 		archiver = NewArchiveExtractor(o.config)
 	}
 
+	// Allow disabling compression regardless of the target's configuration.
+	if params.DisableCompression {
+		archiver.Compression = nil
+	}
+
 	var files []ExtractedFile
 	var err error
 
@@ -156,6 +161,9 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	// Optional target parameter
 	targetName := params.Get("target")
 
+	// Optional debugging parameter to force uncompressed extraction
+	disableCompression := params.Get("disableCompression") == "true"
+
 	// Use a lock key that includes target to allow parallel extractions to different targets
 	lockKey := key
 	if targetName != "" {
@@ -181,6 +189,8 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		Prefix:     prefix,
 		Limits:     limits,
 		TargetName: targetName,
+
+		DisableCompression: disableCompression,
 	}
 
 	// sync codepath

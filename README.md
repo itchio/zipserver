@@ -41,7 +41,7 @@ process-wide resource budget set on the top-level config:
 | --- | --- | --- |
 | `CompressMaxConcurrent` | Maximum number of files gzip-compressed at once across the whole process. | `4` |
 
-Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller.
+Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller. A single extract request can opt out of compression entirely with the `disableCompression=true` parameter (see [Extract](#extract)).
 
 | Storage target field | Description | Default |
 | --- | --- | --- |
@@ -142,6 +142,10 @@ zipserver extract --key zips/my_file.zip --prefix extracted/ \
 # Extract specific files by exact path
 zipserver extract --key zips/my_file.zip --prefix extracted/ \
   --only-file "readme.txt" --only-file "images/logo.png"
+
+# Force uncompressed extraction, ignoring the target's compression config
+zipserver extract --key zips/my_file.zip --prefix extracted/ \
+  --target s3backup --disable-compression
 ```
 
 **HTTP API:**
@@ -153,9 +157,14 @@ curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&target
 
 # Extract specific files by exact path
 curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&only_files[]=readme.txt&only_files[]=images/logo.png"
+
+# Force uncompressed extraction, ignoring the target's compression config
+curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&target=s3backup&disableCompression=true"
 ```
 
 Note: `--filter` (glob pattern) and `--only-file` (exact paths) are mutually exclusive.
+
+The `--disable-compression` flag (CLI) / `disableCompression=true` parameter (HTTP) forces files to be stored uncompressed even when the target has compression enabled. This is primarily useful for debugging.
 
 ### HTML Footer Injection
 

@@ -49,6 +49,7 @@ var (
 	extractFilter       = extractCmd.Flag("filter", "Glob pattern to filter extracted files (e.g., '*.png', 'assets/**/*.js')").String()
 	extractOnlyFiles    = extractCmd.Flag("only-file", "Exact file path to extract (can be specified multiple times, mutually exclusive with --filter)").Strings()
 	extractHtmlFooter   = extractCmd.Flag("html-footer", "HTML snippet to append to all index.html files").String()
+	extractNoCompress   = extractCmd.Flag("disable-compression", "Disable compression regardless of the target's configuration (for debugging)").Bool()
 
 	// Copy command
 	copyCmd                     = app.Command("copy", "Copy a file to target storage or different key")
@@ -217,6 +218,8 @@ func runExtract(config *zipserver.Config) {
 		Prefix:     *extractPrefix,
 		Limits:     limits,
 		TargetName: *extractTarget,
+
+		DisableCompression: *extractNoCompress,
 	}
 
 	log.Println("Extraction threads:", limits.ExtractionThreads)

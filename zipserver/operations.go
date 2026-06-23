@@ -20,6 +20,9 @@ type ExtractParams struct {
 	Prefix     string // Prefix/path where extracted files should be stored
 	Limits     *ExtractLimits
 	TargetName string // Optional: target storage name for extracted files
+	// DisableCompression forces extracted files to be stored uncompressed,
+	// overriding the target's compression configuration. Used for debugging.
+	DisableCompression bool
 }
 
 // ExtractResult contains the result of an extract operation
