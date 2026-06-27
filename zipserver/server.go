@@ -17,11 +17,15 @@ type wrapErrors func(http.ResponseWriter, *http.Request) error
 func (fn wrapErrors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	globalMetrics.TotalRequests.Add(1)
 
-	if err := fn(w, r); err != nil {
+	rec := &responseRecorder{ResponseWriter: w}
+
+	if err := fn(rec, r); err != nil {
 		globalMetrics.TotalErrors.Add(1)
 		log.Println("Error", r.Method, r.URL.Path, err)
-		http.Error(w, err.Error(), 500)
+		http.Error(rec, err.Error(), 500)
 	}
+
+	logAccess(r, rec.Status(), rec.bytes)
 }
 
 // get the first value of param or error
@@ -114,6 +118,13 @@ func StartZipServer(listenTo string, _config *Config) error {
 	// Size the process-wide compression limiter up front so the field is never
 	// written while serving (e.g. by list_handler copying globalConfig).
 	globalConfig.getCompressLimiter()
+
+	if err := initAccessLog(globalConfig.AccessLog); err != nil {
+		return err
+	}
+	if globalConfig.AccessLog != "" {
+		log.Print("Access log: " + globalConfig.AccessLog)
+	}
 
 	http.Handle("/", wrapErrors(versionHandler))
 

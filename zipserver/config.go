@@ -179,6 +179,11 @@ type Config struct {
 	ExtractPrefix  string
 	MetricsHost    string `json:",omitempty"`
 
+	// AccessLog is the path to a file where HTTP requests are logged in the
+	// Combined Log Format. Empty disables access logging. The special value
+	// "-" writes to stdout.
+	AccessLog string `json:",omitempty"`
+
 	MaxFileSize       uint64
 	MaxTotalSize      uint64
 	MaxNumFiles       int
