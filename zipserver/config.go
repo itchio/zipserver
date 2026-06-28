@@ -179,6 +179,10 @@ type Config struct {
 	ExtractPrefix  string
 	MetricsHost    string `json:",omitempty"`
 
+	// AuthBearerToken protects all HTTP endpoints when set. Leave empty only
+	// for local development or when another trusted layer handles auth.
+	AuthBearerToken string `json:",omitempty"`
+
 	// AccessLog is the path to a file where HTTP requests are logged in the
 	// Combined Log Format. Empty disables access logging. The special value
 	// "-" writes to stdout.

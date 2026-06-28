@@ -24,6 +24,9 @@ func Test_Config(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if err := tmpFile.Truncate(0); err != nil {
+			t.Fatal(err)
+		}
 
 		_, err = tmpFile.Write(bytes)
 		if err != nil {
@@ -88,6 +91,18 @@ func Test_Config(t *testing.T) {
 	assert.Equal(t, uint64(1024*1024), c.MaxPeekBytes)
 
 	assert.True(t, c.String() != "")
+
+	writeConfig(&Config{
+		PrivateKeyPath:  "/foo/bar.pem",
+		ClientEmail:     "foobar@example.org",
+		Bucket:          "chicken",
+		ExtractPrefix:   "saca",
+		AuthBearerToken: "secret-token",
+	})
+
+	c, err = LoadConfig(tmpFile.Name())
+	require.NoError(t, err)
+	assert.Equal(t, "secret-token", c.AuthBearerToken)
 }
 
 func Test_ConfigCompressionFields(t *testing.T) {

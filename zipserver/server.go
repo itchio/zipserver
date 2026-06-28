@@ -1,16 +1,20 @@
 package zipserver
 
 import (
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"fmt"
 )
 
 var globalConfig *Config
+var errUnauthorized = errors.New("unauthorized")
 
 type wrapErrors func(http.ResponseWriter, *http.Request) error
 
@@ -19,6 +23,13 @@ func (fn wrapErrors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rec := &responseRecorder{ResponseWriter: w}
 
+	if !authorizedRequest(globalConfig, r) {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		http.Error(rec, errUnauthorized.Error(), http.StatusUnauthorized)
+		logAccess(r, rec.Status(), rec.bytes)
+		return
+	}
+
 	if err := fn(rec, r); err != nil {
 		globalMetrics.TotalErrors.Add(1)
 		log.Println("Error", r.Method, r.URL.Path, err)
@@ -26,6 +37,27 @@ func (fn wrapErrors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logAccess(r, rec.Status(), rec.bytes)
+}
+
+func authorizedRequest(config *Config, r *http.Request) bool {
+	if config == nil || config.AuthBearerToken == "" {
+		return true
+	}
+
+	auth := r.Header.Get("Authorization")
+	scheme, token, ok := strings.Cut(auth, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.Contains(token, " ") {
+		return false
+	}
+
+	return constantTimeStringEqual(token, config.AuthBearerToken)
+}
+
+func constantTimeStringEqual(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 // get the first value of param or error
@@ -125,27 +157,34 @@ func StartZipServer(listenTo string, _config *Config) error {
 	if globalConfig.AccessLog != "" {
 		log.Print("Access log: " + globalConfig.AccessLog)
 	}
+	if globalConfig.AuthBearerToken != "" {
+		log.Print("Bearer token authentication: enabled")
+	} else {
+		log.Print("Bearer token authentication: disabled (all endpoints are public)")
+	}
 
-	http.Handle("/", wrapErrors(versionHandler))
+	mux := http.NewServeMux()
+
+	mux.Handle("/", wrapErrors(versionHandler))
 
 	// Extract a .zip file (downloaded from GCS), stores each
 	// individual file on GCS in a given bucket/prefix
-	http.Handle("/extract", wrapErrors(extractHandler))
+	mux.Handle("/extract", wrapErrors(extractHandler))
 
-	http.Handle("/copy", wrapErrors(copyHandler))
-	http.Handle("/delete", wrapErrors(deleteHandler))
+	mux.Handle("/copy", wrapErrors(copyHandler))
+	mux.Handle("/delete", wrapErrors(deleteHandler))
 
 	// show the files in the zip
-	http.Handle("/list", wrapErrors(listHandler))
+	mux.Handle("/list", wrapErrors(listHandler))
 
 	// Download a file from an http{,s} URL and store it on GCS
-	http.Handle("/slurp", wrapErrors(slurpHandler))
+	mux.Handle("/slurp", wrapErrors(slurpHandler))
 
-	http.Handle("/peek", wrapErrors(peekHandler))
+	mux.Handle("/peek", wrapErrors(peekHandler))
 
-	http.Handle("/status", wrapErrors(statusHandler))
-	http.Handle("/metrics", wrapErrors(metricsHandler))
+	mux.Handle("/status", wrapErrors(statusHandler))
+	mux.Handle("/metrics", wrapErrors(metricsHandler))
 
 	log.Print("Listening on: " + listenTo)
-	return http.ListenAndServe(listenTo, nil)
+	return http.ListenAndServe(listenTo, mux)
 }

@@ -97,7 +97,26 @@ Start the server:
 zipserver server --listen 127.0.0.1:8090
 ```
 
-**Warning:** This HTTP server exposes unauthenticated operations on your storage bucket. It's recommended to avoid public network interfaces.
+Set `AuthBearerToken` in `zipserver.json` to require bearer token authentication
+for every HTTP endpoint:
+
+```json
+{
+  "PrivateKeyPath": "path/to/service/key.pem",
+  "ClientEmail": "111111111111@developer.gserviceaccount.com",
+  "Bucket": "my-bucket",
+  "ExtractPrefix": "extracted",
+  "AuthBearerToken": "long-random-token-here"
+}
+```
+
+```bash
+curl -H "Authorization: Bearer long-random-token-here" \
+  "http://localhost:8090/status"
+```
+
+Bearer authentication protects access to the service, but it does not encrypt
+traffic. Use TLS when serving across a network.
 
 ### Monitoring Endpoints
 
