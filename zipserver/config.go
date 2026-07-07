@@ -202,6 +202,12 @@ type Config struct {
 	// spend on compression on a shared machine.
 	CompressMaxConcurrent int `json:",omitempty"`
 
+	// CopyMaxConcurrent caps how many copy operations may run at once across
+	// the whole process — a budget for origin storage egress bandwidth during
+	// bursts of copy requests. Copies over the cap wait for a slot until the
+	// job context expires.
+	CopyMaxConcurrent int `json:",omitempty"`
+
 	JobTimeout               Duration `json:",omitempty"` // Time to complete entire extract or upload job
 	FileGetTimeout           Duration `json:",omitempty"` // Time to download a single object
 	FilePutTimeout           Duration `json:",omitempty"` // Time to upload a single object
@@ -219,6 +225,10 @@ type Config struct {
 	// budget for this config (see getCompressLimiter). Unexported so it is not
 	// serialized and adds no lock to Config, keeping the struct copy-safe.
 	compressLimiter *compressLimiter
+
+	// copyLimiter is the lazily-built, process-wide copy concurrency budget
+	// for this config (see getCopyLimiter).
+	copyLimiter *copyLimiter
 }
 
 type CompressionConfig struct {
@@ -252,6 +262,7 @@ var defaultConfig = Config{
 	MaxPeekBytes:      1024 * 1024,
 
 	CompressMaxConcurrent: defaultCompressMaxConcurrent,
+	CopyMaxConcurrent:     defaultCopyMaxConcurrent,
 
 	JobTimeout:               Duration(5 * time.Minute),
 	FileGetTimeout:           Duration(1 * time.Minute),

@@ -40,6 +40,7 @@ process-wide resource budget set on the top-level config:
 | Top-level config field | Description | Default |
 | --- | --- | --- |
 | `CompressMaxConcurrent` | Maximum number of files gzip-compressed at once across the whole process. | `4` |
+| `CopyMaxConcurrent` | Maximum number of copy operations at once across the whole process. | `16` |
 
 Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller. A single extract request can opt out of compression entirely with the `disableCompression=true` parameter (see [Extract](#extract)).
 

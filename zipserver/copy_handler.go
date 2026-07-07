@@ -9,10 +9,60 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 )
 
 var copyLockTable = NewLockTable()
+
+const defaultCopyMaxConcurrent = 16
+
+// copyLimiter is the process-wide copy concurrency budget, bounding origin
+// storage egress when many copies are requested at once.
+type copyLimiter struct {
+	slots chan struct{}
+}
+
+// newCopyLimiter builds a copy concurrency limiter with the given cap,
+// falling back to the default when maxConcurrent is non-positive.
+func newCopyLimiter(maxConcurrent int) *copyLimiter {
+	if maxConcurrent <= 0 {
+		maxConcurrent = defaultCopyMaxConcurrent
+	}
+	return &copyLimiter{
+		slots: make(chan struct{}, maxConcurrent),
+	}
+}
+
+// copyLimiterInitMu guards lazy creation of a Config's copy limiter. The cap
+// is derived deterministically from Config.CopyMaxConcurrent, so (unlike a
+// configure-once global) it never depends on which caller ran first.
+var copyLimiterInitMu sync.Mutex
+
+// getCopyLimiter returns the process-wide copy limiter for this config,
+// creating it once from CopyMaxConcurrent. Handlers share a single *Config,
+// so they share one limiter and one global concurrency budget.
+func (c *Config) getCopyLimiter() *copyLimiter {
+	copyLimiterInitMu.Lock()
+	defer copyLimiterInitMu.Unlock()
+	if c.copyLimiter == nil {
+		c.copyLimiter = newCopyLimiter(c.CopyMaxConcurrent)
+	}
+	return c.copyLimiter
+}
+
+func (l *copyLimiter) acquire(ctx context.Context) error {
+	select {
+	case l.slots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (l *copyLimiter) release() {
+	<-l.slots
+}
 
 // Copy copies a file from primary storage to a target storage, or within primary
 // storage if no target is specified. If DestKey is set, the file is written to
@@ -21,6 +71,12 @@ func (o *Operations) Copy(ctx context.Context, params CopyParams) CopyResult {
 	if err := params.Validate(o.config); err != nil {
 		return CopyResult{Err: err}
 	}
+
+	limiter := o.config.getCopyLimiter()
+	if err := limiter.acquire(ctx); err != nil {
+		return CopyResult{Err: fmt.Errorf("waiting for copy slot: %v", err)}
+	}
+	defer limiter.release()
 
 	destKey := params.DestKeyOrKey()
 
