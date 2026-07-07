@@ -17,12 +17,16 @@ type MetricsCounter struct {
 	TotalRequests         atomic.Int64 `metric:"zipserver_requests_total"`
 	TotalErrors           atomic.Int64 `metric:"zipserver_errors_total"`
 	TotalCallbackFailures atomic.Int64 `metric:"zipserver_callback_failures_total"`
-	TotalExtractedFiles   atomic.Int64 `metric:"zipserver_extracted_files_total"`
-	TotalCopiedFiles      atomic.Int64 `metric:"zipserver_copied_files_total"`
-	TotalDeletedFiles     atomic.Int64 `metric:"zipserver_deleted_files_total"`
-	TotalSlurpedFiles     atomic.Int64 `metric:"zipserver_slurped_files_total"`
-	TotalBytesDownloaded  atomic.Int64 `metric:"zipserver_downloaded_bytes_total"`
-	TotalBytesUploaded    atomic.Int64 `metric:"zipserver_uploaded_bytes_total"`
+	// failed delivery attempts that have been rescheduled
+	TotalCallbackRetries atomic.Int64 `metric:"zipserver_callback_retries_total"`
+	// callbacks dropped after exhausting all retries
+	TotalCallbackPermanentFailures atomic.Int64 `metric:"zipserver_callback_permanent_failures_total"`
+	TotalExtractedFiles            atomic.Int64 `metric:"zipserver_extracted_files_total"`
+	TotalCopiedFiles               atomic.Int64 `metric:"zipserver_copied_files_total"`
+	TotalDeletedFiles              atomic.Int64 `metric:"zipserver_deleted_files_total"`
+	TotalSlurpedFiles              atomic.Int64 `metric:"zipserver_slurped_files_total"`
+	TotalBytesDownloaded           atomic.Int64 `metric:"zipserver_downloaded_bytes_total"`
+	TotalBytesUploaded             atomic.Int64 `metric:"zipserver_uploaded_bytes_total"`
 }
 
 // render the metrics in a prometheus compatible format

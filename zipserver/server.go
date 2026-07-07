@@ -130,17 +130,20 @@ func statusHandler(w http.ResponseWriter, r *http.Request) error {
 	extractKeys := extractLockTable.GetLocks()
 	slurpKeys := slurpLockTable.GetLocks()
 	deleteKeys := deleteLockTable.GetLocks()
+	pendingCallbacks := globalCallbackQueue.GetPending()
 
 	return writeJSONMessage(w, struct {
-		CopyLocks    []KeyInfo `json:"copy_locks"`
-		ExtractLocks []KeyInfo `json:"extract_locks"`
-		SlurpLocks   []KeyInfo `json:"slurp_locks"`
-		DeleteLocks  []KeyInfo `json:"delete_locks"`
+		CopyLocks        []KeyInfo             `json:"copy_locks"`
+		ExtractLocks     []KeyInfo             `json:"extract_locks"`
+		SlurpLocks       []KeyInfo             `json:"slurp_locks"`
+		DeleteLocks      []KeyInfo             `json:"delete_locks"`
+		PendingCallbacks []PendingCallbackInfo `json:"pending_callbacks"`
 	}{
-		CopyLocks:    copyKeys,
-		ExtractLocks: extractKeys,
-		SlurpLocks:   slurpKeys,
-		DeleteLocks:  deleteKeys,
+		CopyLocks:        copyKeys,
+		ExtractLocks:     extractKeys,
+		SlurpLocks:       slurpKeys,
+		DeleteLocks:      deleteKeys,
+		PendingCallbacks: pendingCallbacks,
 	})
 }
 

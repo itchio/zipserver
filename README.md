@@ -494,10 +494,43 @@ curl "http://localhost:8090/extract?key=zips/my_file.zip&prefix=extracted&async=
 curl "http://localhost:8090/slurp?url=https://example.com/file.zip&key=uploads/file.zip&async=http://example.com/slurp-done"
 ```
 
+### Delivery and Retries
+
+A callback attempt counts as delivered only when your endpoint responds with
+a 2xx status. Any other outcome (connection failure, timeout, or non-2xx
+response) is retried on a backoff schedule, configurable via
+`CallbackRetryDelays` in the config:
+
+```json
+{
+  "CallbackRetryDelays": ["5s", "30s", "2m", "10m"]
+}
+```
+
+The values above are the default: one initial attempt plus one retry per
+entry (5 attempts over ~13 minutes). Set an explicit empty list (`[]`) to
+disable retries. Each individual attempt is bounded by
+`AsyncNotificationTimeout` (default 5s).
+
+Your callback endpoint must be idempotent: a callback is re-sent whenever the
+server can't observe a 2xx, so a receiver that processes the request but
+responds slowly or with an error status will see the same callback again.
+Retried callbacks can also arrive late or out of order relative to callbacks
+from other operations.
+
+Pending callbacks are held in memory only — they don't survive a server
+restart, and a callback that still fails after the last retry is dropped (the
+final response body is logged). Callers should keep their own deadline for
+jobs whose callback never arrives. Callbacks currently retrying are visible
+at `/status` under `pending_callbacks` (URLs shown with query strings
+stripped), and retry volume is exposed at `/metrics`:
+
+- `zipserver_callback_failures_total` — failed delivery attempts
+- `zipserver_callback_retries_total` — attempts that were rescheduled for retry
+- `zipserver_callback_permanent_failures_total` — callbacks dropped after exhausting all retries
+
 ### Notes
 
-- The callback timeout is configurable via `AsyncNotificationTimeout` in the config
-- If your callback URL returns a non-200 status, the error is logged but the operation result is not retried
 - Operations that are already in progress for the same key return `{"Processing": true}` without the `Async` field
 - For `/copy`, `sync_timeout` (milliseconds) enables a hybrid mode: the server waits up to that duration before switching to async and notifying the callback. If it completes within the timeout, no callback is sent.
 

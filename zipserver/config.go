@@ -213,6 +213,11 @@ type Config struct {
 	FilePutTimeout           Duration `json:",omitempty"` // Time to upload a single object
 	AsyncNotificationTimeout Duration `json:",omitempty"` // Time to complete webhook request
 
+	// Backoff schedule for retrying failed callback deliveries (transport
+	// error or non-2xx response). One attempt is made plus one per entry; an
+	// explicit empty list disables retries.
+	CallbackRetryDelays []Duration `json:",omitempty"`
+
 	// Places that can be written to
 	StorageTargets []StorageConfig `json:",omitempty"`
 
@@ -268,6 +273,13 @@ var defaultConfig = Config{
 	FileGetTimeout:           Duration(1 * time.Minute),
 	FilePutTimeout:           Duration(1 * time.Minute),
 	AsyncNotificationTimeout: Duration(5 * time.Second),
+
+	CallbackRetryDelays: []Duration{
+		Duration(5 * time.Second),
+		Duration(30 * time.Second),
+		Duration(2 * time.Minute),
+		Duration(10 * time.Minute),
+	},
 }
 
 func (s *StorageConfig) CompressionConfig() *CompressionConfig {

@@ -1,7 +1,6 @@
 package zipserver
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -244,26 +243,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		log.Print("Notifying " + asyncURL)
-
-		nofityCtx, nofifyCancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.AsyncNotificationTimeout))
-		defer nofifyCancel()
-
-		outBody := bytes.NewBufferString(resValues.Encode())
-		req, err := http.NewRequestWithContext(nofityCtx, http.MethodPost, asyncURL, outBody)
-		if err != nil {
-			globalMetrics.TotalCallbackFailures.Add(1)
-			log.Printf("Failed to create callback request: %v", err)
-			return
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		asyncResponse, err := http.DefaultClient.Do(req)
-		if err == nil {
-			asyncResponse.Body.Close()
-		} else {
-			globalMetrics.TotalCallbackFailures.Add(1)
-			log.Print("Failed to deliver callback: " + err.Error())
-		}
+		notifyCallback(asyncURL, resValues)
 	})()
 
 	return writeJSONMessage(w, struct {

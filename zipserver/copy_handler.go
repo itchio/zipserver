@@ -1,7 +1,6 @@
 package zipserver
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -179,49 +178,6 @@ func formatBytes(b float64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.2f %cB", b/div, "kMGTPE"[exp])
-}
-
-// notify the callback URL of task completion
-func notifyCallback(callbackURL string, resValues url.Values) error {
-	notifyCtx, notifyCancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.AsyncNotificationTimeout))
-	defer notifyCancel()
-
-	outBody := bytes.NewBufferString(resValues.Encode())
-	req, err := http.NewRequestWithContext(notifyCtx, http.MethodPost, callbackURL, outBody)
-	if err != nil {
-		globalMetrics.TotalCallbackFailures.Add(1)
-		log.Print("Failed to create callback request: ", err)
-		return err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	response, err := http.DefaultClient.Do(req)
-	if err != nil {
-		globalMetrics.TotalCallbackFailures.Add(1)
-		log.Print("Failed to deliver callback: ", err)
-		return err
-	}
-
-	if response.StatusCode != http.StatusOK {
-		log.Printf("Callback returned unexpected code: %d %s", response.StatusCode, callbackURL)
-		bodyBytes, _ := io.ReadAll(response.Body)
-		bodyString := string(bodyBytes)
-		log.Print(bodyString)
-	}
-
-	response.Body.Close()
-
-	return nil
-}
-
-// notify the callback URL that an error happened
-func notifyError(callbackURL string, err error) error {
-	globalMetrics.TotalErrors.Add(1)
-
-	message := url.Values{}
-	message.Add("Success", "false")
-	message.Add("Error", err.Error())
-	return notifyCallback(callbackURL, message)
 }
 
 // The copy handler asynchronously copies a file from primary storage to either:

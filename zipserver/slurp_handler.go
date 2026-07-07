@@ -1,7 +1,6 @@
 package zipserver
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -181,41 +180,23 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
-		err = process(ctx)
+		procErr := process(ctx)
 
-		if err != nil {
+		if procErr != nil {
 			globalMetrics.TotalErrors.Add(1)
 		}
 
 		log.Print("Notifying " + asyncURL)
 
 		resValues := url.Values{}
-		if err != nil {
+		if procErr != nil {
 			resValues.Add("Type", "SlurpError")
-			resValues.Add("Error", err.Error())
+			resValues.Add("Error", procErr.Error())
 		} else {
 			resValues.Add("Success", "true")
 		}
 
-		notifyCtx, notifyCancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.AsyncNotificationTimeout))
-		defer notifyCancel()
-
-		outBody := bytes.NewBufferString(resValues.Encode())
-		req, err := http.NewRequestWithContext(notifyCtx, http.MethodPost, asyncURL, outBody)
-		if err != nil {
-			globalMetrics.TotalCallbackFailures.Add(1)
-			log.Printf("Failed to create callback request: %v", err)
-			return
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			globalMetrics.TotalCallbackFailures.Add(1)
-			log.Print("Failed to deliver callback: " + err.Error())
-			return
-		}
-		resp.Body.Close()
+		notifyCallback(asyncURL, resValues)
 	})()
 
 	return writeJSONMessage(w, struct {
