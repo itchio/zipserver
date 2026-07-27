@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zip"
 )
 
 func peekTestConfig(targetName string) *Config {
@@ -131,13 +134,24 @@ func TestPeekOperationValidation(t *testing.T) {
 	}
 }
 
-func TestPeekOperationUnsupportedEncoding(t *testing.T) {
+func TestPeekOperationBrotliFile(t *testing.T) {
 	targetName := "mem-target-peek-br"
 	config := peekTestConfig(targetName)
 	storage := GetNamedMemStorage(targetName)
 	defer ClearNamedMemStorage(targetName)
 
-	_, err := storage.PutFile(context.Background(), "target-bucket", "test/file.br", strings.NewReader("not actually brotli"), PutOptions{
+	plain := []byte("hello brotli world")
+	var buf bytes.Buffer
+	writer := brotli.NewWriter(&buf)
+	if _, err := writer.Write(plain); err != nil {
+		t.Fatalf("brotli write failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("brotli close failed: %v", err)
+	}
+
+	_, err := storage.PutFile(context.Background(), "target-bucket", "test/file.txt", bytes.NewReader(buf.Bytes()), PutOptions{
+		ContentType:     "text/plain",
 		ContentEncoding: "br",
 	})
 	if err != nil {
@@ -145,12 +159,113 @@ func TestPeekOperationUnsupportedEncoding(t *testing.T) {
 	}
 
 	result := NewOperations(config).Peek(context.Background(), PeekParams{
-		Key:        "test/file.br",
+		Key:        "test/file.txt",
+		TargetName: targetName,
+		MaxBytes:   12,
+	})
+	if result.Err != nil {
+		t.Fatalf("peek failed: %v", result.Err)
+	}
+
+	if string(result.Data) != "hello brotli" {
+		t.Fatalf("peek data = %q, want %q", result.Data, "hello brotli")
+	}
+	if result.ContentEncoding != "br" {
+		t.Fatalf("content encoding = %q, want br", result.ContentEncoding)
+	}
+	if !result.Decoded {
+		t.Fatalf("brotli file should be marked decoded")
+	}
+}
+
+func TestPeekOperationUnsupportedEncoding(t *testing.T) {
+	targetName := "mem-target-peek-unsupported"
+	config := peekTestConfig(targetName)
+	storage := GetNamedMemStorage(targetName)
+	defer ClearNamedMemStorage(targetName)
+
+	_, err := storage.PutFile(context.Background(), "target-bucket", "test/file.zst", strings.NewReader("not actually zstd"), PutOptions{
+		ContentEncoding: "zstd",
+	})
+	if err != nil {
+		t.Fatalf("put file: %v", err)
+	}
+
+	result := NewOperations(config).Peek(context.Background(), PeekParams{
+		Key:        "test/file.zst",
 		TargetName: targetName,
 		MaxBytes:   4,
 	})
 	if result.Err == nil {
 		t.Fatalf("expected unsupported encoding error")
+	}
+}
+
+// Extracting into a brotli-enabled target must produce objects Peek can decode.
+func TestPeekAfterBrotliExtract(t *testing.T) {
+	targetName := "mem-target-peek-br-extract"
+	config := peekTestConfig(targetName)
+	config.MaxPeekBytes = 4096
+	config.ExtractionThreads = 4
+	config.JobTimeout = Duration(10 * time.Second)
+	config.FilePutTimeout = Duration(10 * time.Second)
+	storage := GetNamedMemStorage(targetName)
+	defer ClearNamedMemStorage(targetName)
+
+	htmlContent := bytes.Repeat([]byte("<html><body>Hello Peek!</body></html>"), 50)
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	(&zipLayout{entries: []zipEntry{{name: "index.html", data: htmlContent}}}).Write(t, zw)
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zip close failed: %v", err)
+	}
+
+	ctx := context.Background()
+	source, _ := NewMemStorage()
+	zipPath := "peek_extract_test.zip"
+	if _, err := source.PutFile(ctx, config.Bucket, zipPath, bytes.NewReader(buf.Bytes()), PutOptions{}); err != nil {
+		t.Fatalf("put zip: %v", err)
+	}
+
+	archiver := &ArchiveExtractor{
+		Storage:       source,
+		Config:        config,
+		TargetStorage: storage,
+		TargetBucket:  "target-bucket",
+		Compression: &CompressionConfig{
+			Enabled:    true,
+			MinSize:    100,
+			Extensions: []string{".html"},
+			Format:     CompressFormatBrotli,
+		},
+	}
+
+	files, err := archiver.ExtractZip(ctx, zipPath, "peek_extract", testLimits())
+	if err != nil {
+		t.Fatalf("extract failed: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 extracted file, got %d", len(files))
+	}
+
+	result := NewOperations(config).Peek(context.Background(), PeekParams{
+		Key:        files[0].Key,
+		TargetName: targetName,
+		MaxBytes:   uint64(len(htmlContent)),
+	})
+	if result.Err != nil {
+		t.Fatalf("peek failed: %v", result.Err)
+	}
+
+	if result.ContentEncoding != "br" {
+		t.Fatalf("content encoding = %q, want br", result.ContentEncoding)
+	}
+	if !result.Decoded {
+		t.Fatalf("extracted brotli file should be marked decoded")
+	}
+	if !bytes.Equal(result.Data, htmlContent) {
+		t.Fatalf("peek data does not match original content")
 	}
 }
 

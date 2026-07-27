@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/gzip"
 )
 
@@ -100,6 +101,9 @@ func (o *Operations) Peek(ctx context.Context, params PeekParams) PeekResult {
 			}
 			defer gzReader.Close()
 			body = gzReader
+			decoded = true
+		case "br":
+			body = brotli.NewReader(reader)
 			decoded = true
 		default:
 			return PeekResult{Err: fmt.Errorf("unsupported content encoding for peek decompression: %s", contentEncoding)}

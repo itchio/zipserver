@@ -1,11 +1,11 @@
 package zipserver
 
 import (
-	"github.com/klauspost/compress/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/klauspost/compress/zip"
 	"net/http"
 	"net/http/httptest"
 	"net/url"

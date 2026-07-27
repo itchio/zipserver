@@ -113,7 +113,16 @@ type StorageConfig struct {
 	// CompressMinSize is the minimum file size before compression is attempted.
 	// A nil pointer inherits the default; an explicit 0 means "no minimum".
 	CompressMinSize *int64 `json:",omitempty"`
-	CompressLevel   int    `json:",omitempty"`
+	// CompressLevel is interpreted in the chosen format's range: gzip -2 to 9,
+	// brotli 1 to 11. Zero or out-of-range values use the default level, so
+	// brotli's level 0 is not selectable.
+	CompressLevel int `json:",omitempty"`
+	// CompressFormat selects the Content-Encoding for pre-compressed files:
+	// "gzip" (default) or "br". Brotli compresses smaller but the stored object
+	// is the only representation, so use "br" only when every consumer of this
+	// target decodes it (browsers do over HTTPS; plain curl or naive SDK
+	// downloads do not).
+	CompressFormat string `json:",omitempty"`
 }
 
 // TODO: eventually this should be a factory that can return different storage types
@@ -168,6 +177,13 @@ func (s *StorageConfig) Validate() error {
 		return missingFieldError("Bucket")
 	}
 
+	switch s.CompressFormat {
+	case "", CompressFormatGzip, CompressFormatBrotli:
+	default:
+		return fmt.Errorf("Config error: [Storage %s] CompressFormat must be %q or %q, got %q",
+			s.Name, CompressFormatGzip, CompressFormatBrotli, s.CompressFormat)
+	}
+
 	return nil
 }
 
@@ -197,7 +213,7 @@ type Config struct {
 	MaxListFiles      int
 	MaxPeekBytes      uint64 `json:",omitempty"`
 
-	// CompressMaxConcurrent caps how many files may be gzip-compressed at once
+	// CompressMaxConcurrent caps how many files may be compressed at once
 	// across the whole process — a budget for how many cores we're willing to
 	// spend on compression on a shared machine.
 	CompressMaxConcurrent int `json:",omitempty"`
@@ -241,6 +257,8 @@ type CompressionConfig struct {
 	Extensions []string
 	MinSize    int64
 	Level      int
+	// Format is "gzip" or "br"; empty means gzip.
+	Format string
 }
 
 var defaultCompressExtensions = []string{".html", ".js", ".css", ".svg", ".wasm", ".wav", ".glb", ".pck", ".json", ".mem", ".gltf", ".data", ".symbols", ".ttf", ".otf", ".map", ".xml", ".txt", ".symbolmap", ".obj", ".bin"}
@@ -297,6 +315,7 @@ func (s *StorageConfig) CompressionConfig() *CompressionConfig {
 		Extensions: s.CompressExtensions,
 		MinSize:    minSize,
 		Level:      s.CompressLevel,
+		Format:     s.CompressFormat,
 	}
 	if len(config.Extensions) == 0 {
 		config.Extensions = defaultCompressExtensions

@@ -8,6 +8,8 @@ import (
 	"io"
 	"math"
 	"testing"
+
+	"github.com/andybalholm/brotli"
 )
 
 func TestShouldCompress(t *testing.T) {
@@ -190,6 +192,11 @@ func TestEffectiveCompressLevel(t *testing.T) {
 		{"huffman only", &CompressionConfig{Level: gzip.HuffmanOnly}, gzip.HuffmanOnly},
 		{"above range falls back to default", &CompressionConfig{Level: 10}, defaultCompressLevel},
 		{"below range falls back to default", &CompressionConfig{Level: -3}, defaultCompressLevel},
+		{"br unset falls back to default", &CompressionConfig{Format: CompressFormatBrotli}, defaultCompressLevel},
+		{"br configured valid level", &CompressionConfig{Format: CompressFormatBrotli, Level: 9}, 9},
+		{"br best compression valid", &CompressionConfig{Format: CompressFormatBrotli, Level: brotli.BestCompression}, brotli.BestCompression},
+		{"br above range falls back to default", &CompressionConfig{Format: CompressFormatBrotli, Level: 12}, defaultCompressLevel},
+		{"br negative falls back to default", &CompressionConfig{Format: CompressFormatBrotli, Level: -1}, defaultCompressLevel},
 	}
 
 	for _, tc := range cases {
@@ -227,6 +234,33 @@ func TestCompressStreamToTemp(t *testing.T) {
 		defer reader.Close()
 
 		decompressed, err := io.ReadAll(reader)
+		if err != nil {
+			t.Fatalf("io.ReadAll failed: %v", err)
+		}
+		if !bytes.Equal(decompressed, input) {
+			t.Fatalf("decompressed data mismatch")
+		}
+	})
+
+	t.Run("brotli format produces brotli temp file", func(t *testing.T) {
+		input := bytes.Repeat([]byte("Hello, World! This is compressible data. "), 200)
+
+		compressed, used, err := compressStreamToTemp(
+			context.Background(),
+			bytes.NewReader(input),
+			uint64(len(input)),
+			&CompressionConfig{Format: CompressFormatBrotli},
+			newCompressLimiter(1),
+		)
+		if err != nil {
+			t.Fatalf("compressStreamToTemp failed: %v", err)
+		}
+		if !used {
+			t.Fatalf("expected compression to be used")
+		}
+		defer compressed.Cleanup()
+
+		decompressed, err := io.ReadAll(brotli.NewReader(compressed.Reader))
 		if err != nil {
 			t.Fatalf("io.ReadAll failed: %v", err)
 		}

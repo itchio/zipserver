@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1268,6 +1269,42 @@ func Test_Compression(t *testing.T) {
 				assert.NoError(t, gzReader.Close())
 				assert.Equal(t, want, decompressed)
 			}
+		})
+	})
+
+	t.Run("brotli format sets br Content-Encoding", func(t *testing.T) {
+		storage, _ := NewMemStorage()
+		config := emptyConfig()
+		compression := &CompressionConfig{
+			Enabled:    true,
+			MinSize:    100,
+			Extensions: []string{".html"},
+			Format:     CompressFormatBrotli,
+		}
+
+		htmlContent := bytes.Repeat([]byte("<html><body>Hello World!</body></html>"), 50)
+
+		withZip(t, storage, config, compression, []zipEntry{
+			{name: "index.html", data: htmlContent},
+		}, func(archiver *ArchiveExtractor, zipPath, prefix string) {
+			files, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+			assert.NoError(t, err)
+			assert.Len(t, files, 1)
+
+			h, err := storage.HeadFile(ctx, config.Bucket, files[0].Key)
+			assert.NoError(t, err)
+			assert.Equal(t, "br", h.Get("content-encoding"))
+
+			reader, _, err := storage.GetFile(ctx, config.Bucket, files[0].Key)
+			assert.NoError(t, err)
+			compressedData, err := io.ReadAll(reader)
+			assert.NoError(t, err)
+			assert.NoError(t, reader.Close())
+			assert.True(t, len(compressedData) < len(htmlContent), "compressed size should be smaller")
+
+			decompressed, err := io.ReadAll(brotli.NewReader(bytes.NewReader(compressedData)))
+			assert.NoError(t, err)
+			assert.Equal(t, htmlContent, decompressed)
 		})
 	})
 

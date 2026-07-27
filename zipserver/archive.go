@@ -545,7 +545,7 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 		if usedCompressed {
 			defer compressedFile.Cleanup()
 			reader = compressedFile.Reader
-			resource.contentEncoding = "gzip"
+			resource.contentEncoding = a.Compression.ContentEncoding()
 			expectedSize = compressedFile.Size
 		} else {
 			// Compression attempt consumed the stream. Re-open the zip entry and re-apply

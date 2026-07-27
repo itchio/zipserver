@@ -125,7 +125,8 @@ func Test_ConfigCompressionFields(t *testing.T) {
 				"CompressEnabled": true,
 				"CompressExtensions": [".js"],
 				"CompressMinSize": 128,
-				"CompressLevel": 4
+				"CompressLevel": 4,
+				"CompressFormat": "br"
 			}
 		]
 	}`)
@@ -144,4 +145,26 @@ func Test_ConfigCompressionFields(t *testing.T) {
 	require.NotNil(t, target.CompressMinSize)
 	assert.EqualValues(t, 128, *target.CompressMinSize)
 	assert.Equal(t, 4, target.CompressLevel)
+	assert.Equal(t, "br", target.CompressFormat)
+	assert.Equal(t, "br", target.CompressionConfig().Format)
+}
+
+func Test_ConfigCompressFormatValidation(t *testing.T) {
+	base := StorageConfig{
+		Name:   "target",
+		Type:   Mem,
+		Bucket: "bucket",
+	}
+
+	for _, format := range []string{"", "gzip", "br"} {
+		cfg := base
+		cfg.CompressFormat = format
+		assert.NoError(t, cfg.Validate(), "format %q should be valid", format)
+	}
+
+	cfg := base
+	cfg.CompressFormat = "brotli"
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "CompressFormat")
 }

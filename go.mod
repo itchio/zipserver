@@ -4,6 +4,7 @@ go 1.25.11
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
+	github.com/andybalholm/brotli v1.2.2
 	github.com/aws/aws-sdk-go v1.55.8
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/klauspost/compress v1.18.6

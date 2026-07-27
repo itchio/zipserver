@@ -9,7 +9,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/gzip"
+)
+
+const (
+	CompressFormatGzip   = "gzip"
+	CompressFormatBrotli = "br"
 )
 
 // alreadyCompressedExtensions contains file extensions that are already compressed
@@ -80,16 +86,40 @@ func newCompressLimiter(maxConcurrent int) *compressLimiter {
 // (unlike a configure-once global) it never depends on which caller ran first.
 var compressLimiterInitMu sync.Mutex
 
-// effectiveCompressLevel returns the configured gzip level, falling back to
-// the default when unset (zero) or outside gzip's valid range.
+// effectiveCompressLevel returns the configured level, falling back to the
+// default when unset (zero) or outside the chosen format's valid range.
+// Zero always means "default", so brotli's fastest level (0) is unreachable;
+// its ratio is not worth having two meanings for zero.
 func effectiveCompressLevel(config *CompressionConfig) int {
 	if config == nil || config.Level == 0 {
 		return defaultCompressLevel
+	}
+	if config.Format == CompressFormatBrotli {
+		if config.Level < brotli.BestSpeed || config.Level > brotli.BestCompression {
+			return defaultCompressLevel
+		}
+		return config.Level
 	}
 	if config.Level < gzip.HuffmanOnly || config.Level > gzip.BestCompression {
 		return defaultCompressLevel
 	}
 	return config.Level
+}
+
+// ContentEncoding returns the HTTP Content-Encoding value for output produced
+// with this config. An empty or unknown format falls back to gzip.
+func (c *CompressionConfig) ContentEncoding() string {
+	if c != nil && c.Format == CompressFormatBrotli {
+		return CompressFormatBrotli
+	}
+	return CompressFormatGzip
+}
+
+func newCompressWriter(w io.Writer, config *CompressionConfig) (io.WriteCloser, error) {
+	if config != nil && config.Format == CompressFormatBrotli {
+		return brotli.NewWriterLevel(w, effectiveCompressLevel(config)), nil
+	}
+	return gzip.NewWriterLevel(w, effectiveCompressLevel(config))
 }
 
 // getCompressLimiter returns the process-wide compression limiter for this
@@ -170,8 +200,9 @@ func normalizeExtension(ext string) string {
 	return ext
 }
 
-// compressStreamToTemp streams data to a temporary gzip file and returns it
-// only if the compressed payload is smaller than the input payload.
+// compressStreamToTemp streams data to a temporary compressed file (gzip or
+// brotli per config.Format) and returns it only if the compressed payload is
+// smaller than the input payload.
 func compressStreamToTemp(
 	ctx context.Context,
 	reader io.Reader,
@@ -188,7 +219,11 @@ func compressStreamToTemp(
 		return nil, false, err
 	}
 
-	tempFile, err := os.CreateTemp(tmpDir, "zipserver-compress-*.gz")
+	suffix := ".gz"
+	if config.ContentEncoding() == CompressFormatBrotli {
+		suffix = ".br"
+	}
+	tempFile, err := os.CreateTemp(tmpDir, "zipserver-compress-*"+suffix)
 	if err != nil {
 		return nil, false, err
 	}
@@ -206,7 +241,7 @@ func compressStreamToTemp(
 
 	var sourceSize uint64
 	limited := limitedReader(reader, expectedSize, &sourceSize)
-	writer, err := gzip.NewWriterLevel(tempFile, effectiveCompressLevel(config))
+	writer, err := newCompressWriter(tempFile, config)
 	if err != nil {
 		return nil, false, err
 	}

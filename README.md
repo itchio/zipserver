@@ -39,16 +39,19 @@ process-wide resource budget set on the top-level config:
 
 | Top-level config field | Description | Default |
 | --- | --- | --- |
-| `CompressMaxConcurrent` | Maximum number of files gzip-compressed at once across the whole process. | `4` |
+| `CompressMaxConcurrent` | Maximum number of files compressed at once across the whole process. | `4` |
 | `CopyMaxConcurrent` | Maximum number of copy operations at once across the whole process. | `16` |
 
-Primary/default extraction does not compress files. When compression is enabled on a target, matching files are gzip-compressed during extract and uploaded with `Content-Encoding: gzip` only when compression makes the file smaller. A single extract request can opt out of compression entirely with the `disableCompression=true` parameter (see [Extract](#extract)).
+Primary/default extraction does not compress files. When compression is enabled on a target, matching files are compressed during extract and uploaded with the matching `Content-Encoding` (`gzip` by default, or `br` with `CompressFormat`) only when compression makes the file smaller. A single extract request can opt out of compression entirely with the `disableCompression=true` parameter (see [Extract](#extract)).
+
+Note that the compressed object is the only stored representation. Gzip is much more broadly supported than brotli, but clients still need to request or decode the selected encoding. Use `"br"` only when all consumers of the target accept brotli (modern browsers do over HTTPS; plain `curl` or naive SDK downloads do not automatically decode it).
 
 | Storage target field | Description | Default |
 | --- | --- | --- |
-| `CompressEnabled` | Enable gzip compression for files extracted to this target. | `false` |
+| `CompressEnabled` | Enable compression for files extracted to this target. | `false` |
+| `CompressFormat` | Compression format: `"gzip"` or `"br"` (brotli). | `"gzip"` |
 | `CompressMinSize` | Minimum file size in bytes before attempting compression. Set to `0` to compress files of any size. | `1024` |
-| `CompressLevel` | gzip compression level (`-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best). Out-of-range or `0` falls back to the default. | `5` |
+| `CompressLevel` | Compression level, interpreted in the chosen format's range: gzip `-2`=Huffman-only, `-1`=default, `1`=fastest … `9`=best; brotli `1`=fastest … `11`=best. Out-of-range or `0` falls back to the default (brotli's level `0` is not selectable). | `5` |
 | `CompressExtensions` | File extensions eligible for compression (with or without leading dot). | `[".html",".js",".css",".svg",".wasm",".wav",".glb",".pck",".json",".mem",".gltf",".data",".symbols",".ttf",".otf",".map",".xml",".txt",".symbolmap",".obj",".bin"]` |
 
 ## Limits
