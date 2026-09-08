@@ -9,12 +9,10 @@ import (
 	"github.com/klauspost/compress/zip"
 	"io"
 	"io/fs"
-	"math/rand"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -924,25 +922,25 @@ func Test_OnlyFilesFiltering(t *testing.T) {
 // TestFetchZipFailing simulates a download failing after the ouptut file has been created,
 // and makes sure the incomplete file is removed.
 func TestFetchZipFailing(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-	bucket := "bucket" + strconv.Itoa(rand.Int())
-	key := "key" + strconv.Itoa(rand.Int())
-	path := fetchZipFilename(bucket, key)
-	path = filepath.Join(tmpDir, path)
-	require.False(t, fileExists(path), "test output file existed ahead of time")
-	t.Logf("temp file: %s", path)
+	before := fetchTempFiles(t)
 
 	a := &ArchiveExtractor{
-		Storage: &mockFailingStorage{t, path},
+		Storage: &mockFailingStorage{t, before},
 		Config: &Config{
-			Bucket: bucket,
+			Bucket: "bucket",
 		},
 	}
 
 	ctx := context.Background()
-	_, err := a.fetchZip(ctx, key, 0)
+	_, err := a.fetchZip(ctx, "key", 0)
 	assert.EqualError(t, err, "intentional failure")
-	assert.False(t, fileExists(path), "file should have been removed")
+	assert.Equal(t, before, fetchTempFiles(t), "file should have been removed")
+}
+
+func fetchTempFiles(t *testing.T) []string {
+	matches, err := filepath.Glob(filepath.Join(tmpDir, fetchZipPattern))
+	require.NoError(t, err)
+	return matches
 }
 
 func fileExists(path string) bool {
@@ -957,12 +955,12 @@ func fileExists(path string) bool {
 }
 
 type mockFailingStorage struct {
-	t    *testing.T
-	path string
+	t      *testing.T
+	before []string
 }
 
 func (m *mockFailingStorage) GetFile(_ context.Context, _, _ string) (io.ReadCloser, http.Header, error) {
-	return &mockFailingReadCloser{m.t, m.path}, nil, nil
+	return &mockFailingReadCloser{m.t, m.before}, nil, nil
 }
 
 func (m *mockFailingStorage) PutFile(_ context.Context, _, _ string, contents io.Reader, _ PutOptions) (PutResult, error) {
@@ -978,12 +976,12 @@ func (m *mockFailingStorage) GetReaderAt(_ context.Context, _, _ string, _ uint6
 }
 
 type mockFailingReadCloser struct {
-	t    *testing.T
-	path string
+	t      *testing.T
+	before []string
 }
 
 func (m *mockFailingReadCloser) Read(p []byte) (int, error) {
-	assert.True(m.t, fileExists(m.path), "file should have been created")
+	assert.Len(m.t, fetchTempFiles(m.t), len(m.before)+1, "file should have been created")
 	return 0, errors.New("intentional failure")
 }
 

@@ -3,8 +3,6 @@ package zipserver
 import (
 	"bytes"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/klauspost/compress/zip"
@@ -131,17 +129,12 @@ func NewArchiveExtractorWithTarget(config *Config, targetStorage Storage, target
 	}
 }
 
-func fetchZipFilename(bucket, key string) string {
-	hasher := md5.New()
-	hasher.Write([]byte(key))
-	return bucket + "_" + hex.EncodeToString(hasher.Sum(nil)) + ".zip"
-}
+const fetchZipPattern = "zipserver-fetch-*.zip"
 
 func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string, maxZipSize uint64) (string, error) {
-	os.MkdirAll(tmpDir, os.ModeDir|0777)
-
-	fname := fetchZipFilename(a.Bucket, key)
-	fname = path.Join(tmpDir, fname)
+	if err := os.MkdirAll(tmpDir, os.ModeDir|0777); err != nil {
+		return "", err
+	}
 
 	src, headers, err := a.Storage.GetFile(ctx, a.Bucket, key)
 	if err != nil {
@@ -162,11 +155,11 @@ func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string, maxZipSize 
 		}
 	}
 
-	dest, err := os.Create(fname)
+	dest, err := os.CreateTemp(tmpDir, fetchZipPattern)
 	if err != nil {
 		return "", err
 	}
-	_, err = os.Stat(fname)
+	fname := dest.Name()
 
 	defer func() {
 		dest.Close()
