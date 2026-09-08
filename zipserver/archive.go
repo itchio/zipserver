@@ -186,14 +186,31 @@ func (a *ArchiveExtractor) fetchZip(ctx context.Context, key string, maxZipSize 
 }
 
 // delete all files that have been uploaded so far
-func (a *ArchiveExtractor) abortUpload(files []ExtractedFile) error {
-	for _, file := range files {
-		// FIXME: code quality - what if we fail here? any retry strategies?
-		ctx := context.Background()
-		a.getDestinationStorage().DeleteFile(ctx, a.getDestinationBucket(), file.Key)
+func (a *ArchiveExtractor) abortUpload(files []ExtractedFile) {
+	if len(files) == 0 {
+		return
 	}
 
-	return nil
+	// The job context is already canceled or expired by the time we get here,
+	// so rollback runs on its own deadline.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.Config.JobTimeout))
+	defer cancel()
+
+	failed := 0
+	for _, file := range files {
+		err := a.getDestinationStorage().DeleteFile(ctx, a.getDestinationBucket(), file.Key)
+		if err != nil {
+			failed++
+			log.Printf("Rollback failed to delete %s: %s", file.Key, err)
+			if ctx.Err() != nil {
+				break
+			}
+		}
+	}
+
+	if failed > 0 {
+		log.Printf("Rollback incomplete: %d of %d files could not be deleted from [%s]", failed, len(files), a.getDestinationLabel())
+	}
 }
 
 func shouldIgnoreFile(fname string) bool {
