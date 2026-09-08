@@ -229,7 +229,7 @@ func drainServer(server *http.Server, sig os.Signal) error {
 	}
 
 	log.Printf("Drain: waiting for async jobs: %s", describeActiveWork())
-	if err := waitGroupWithContext(ctx, &activeJobs); err != nil {
+	if err := activeJobs.Wait(ctx); err != nil {
 		log.Printf("Drain: deadline reached, exiting with work still running: %s", describeActiveWork())
 		return nil
 	}
