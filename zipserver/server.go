@@ -223,21 +223,49 @@ func drainServer(server *http.Server, sig os.Signal) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	log.Print("Drain: closing listener, waiting for in-flight requests")
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("Drain: HTTP shutdown incomplete: %s", err)
 	}
 
+	log.Printf("Drain: waiting for async jobs: %s", describeActiveWork())
 	if err := waitGroupWithContext(ctx, &activeJobs); err != nil {
-		log.Printf("Drain: async jobs still running at deadline, exiting anyway")
+		log.Printf("Drain: deadline reached, exiting with work still running: %s", describeActiveWork())
 		return nil
 	}
 
+	log.Printf("Drain: waiting for %d pending callbacks", len(globalCallbackQueue.GetPending()))
 	if err := globalCallbackQueue.Wait(ctx); err != nil {
-		pending := len(globalCallbackQueue.GetPending())
-		log.Printf("Drain: %d callbacks still pending at deadline, exiting anyway", pending)
+		log.Printf("Drain: deadline reached, exiting with %d callbacks still pending", len(globalCallbackQueue.GetPending()))
 		return nil
 	}
 
 	log.Print("Drain complete")
 	return nil
+}
+
+// describeActiveWork summarizes held locks and pending callbacks for drain logs.
+func describeActiveWork() string {
+	parts := []string{}
+	describe := func(label string, locks []KeyInfo) {
+		if len(locks) == 0 {
+			return
+		}
+		keys := make([]string, len(locks))
+		for i, lock := range locks {
+			keys[i] = lock.Key
+		}
+		parts = append(parts, fmt.Sprintf("%d %s [%s]", len(locks), label, strings.Join(keys, ", ")))
+	}
+	describe("extract", extractLockTable.GetLocks())
+	describe("copy", copyLockTable.GetLocks())
+	describe("slurp", slurpLockTable.GetLocks())
+	describe("delete", deleteLockTable.GetLocks())
+	if pending := len(globalCallbackQueue.GetPending()); pending > 0 {
+		parts = append(parts, fmt.Sprintf("%d pending callbacks", pending))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, "; ")
 }
