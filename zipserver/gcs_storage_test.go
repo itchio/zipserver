@@ -174,3 +174,27 @@ func TestGetReaderAtRangeEfficiency(t *testing.T) {
 		}
 	})
 }
+
+func TestGcsURLEscaping(t *testing.T) {
+	storage := &GcsStorage{}
+
+	cases := []struct {
+		key  string
+		want string
+	}{
+		{"games/123/index.html", "games/123/index.html"},
+		{"games/123/index.html#.html", "games/123/index.html%23.html"},
+		{"games/123/%69ndex.html", "games/123/%2569ndex.html"},
+		{"games/123/index.html?acl", "games/123/index.html%3Facl"},
+		{"games/123/my file.txt", "games/123/my%20file.txt"},
+		{"games/123/日本語.txt", "games/123/%E6%97%A5%E6%9C%AC%E8%AA%9E.txt"},
+	}
+
+	for _, c := range cases {
+		got := storage.url("bucket", c.key)
+		want := baseURL + "bucket/" + c.want
+		if got != want {
+			t.Errorf("url(%q) = %q, want %q", c.key, got, want)
+		}
+	}
+}

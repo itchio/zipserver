@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -67,8 +68,11 @@ func (c *GcsStorage) httpClient() (*http.Client, error) {
 }
 
 func (c *GcsStorage) url(bucket, key string) string {
-	// return "http://127.0.0.1:5656"
-	return baseURL + bucket + "/" + key
+	segments := strings.Split(key, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	return baseURL + url.PathEscape(bucket) + "/" + strings.Join(segments, "/")
 }
 
 // GetFile returns a reader for the contents of resource at bucket/key
@@ -78,8 +82,8 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 		return nil, nil, err
 	}
 
-	url := c.url(bucket, key)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	reqURL := c.url(bucket, key)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -94,7 +98,7 @@ func (c *GcsStorage) GetFile(ctx context.Context, bucket, key string) (io.ReadCl
 
 	if res.StatusCode != 200 {
 		res.Body.Close()
-		return nil, res.Header, errors.New(res.Status + " " + url)
+		return nil, res.Header, errors.New(res.Status + " " + reqURL)
 	}
 
 	trackedBody := metricsReadCloser{res.Body, &globalMetrics.TotalBytesDownloaded}
@@ -109,8 +113,8 @@ func (c *GcsStorage) HeadFile(ctx context.Context, bucket, key string) (http.Hea
 		return nil, err
 	}
 
-	url := c.url(bucket, key)
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	reqURL := c.url(bucket, key)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, reqURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +126,7 @@ func (c *GcsStorage) HeadFile(ctx context.Context, bucket, key string) (http.Hea
 	res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, errors.New(res.Status + " " + url)
+		return nil, errors.New(res.Status + " " + reqURL)
 	}
 
 	return res.Header, nil
@@ -250,8 +254,8 @@ func (c *GcsStorage) GetReaderAt(ctx context.Context, bucket, key string, maxByt
 		return nil, 0, err
 	}
 
-	url := c.url(bucket, key)
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
+	reqURL := c.url(bucket, key)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, reqURL, nil)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -263,7 +267,7 @@ func (c *GcsStorage) GetReaderAt(ctx context.Context, bucket, key string, maxByt
 	res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, 0, errors.New(res.Status + " " + url)
+		return nil, 0, errors.New(res.Status + " " + reqURL)
 	}
 
 	size := res.ContentLength
@@ -273,7 +277,7 @@ func (c *GcsStorage) GetReaderAt(ctx context.Context, bucket, key string, maxByt
 
 	return &gcsReaderAt{
 		client:   httpClient,
-		url:      url,
+		url:      reqURL,
 		size:     size,
 		maxBytes: maxBytes,
 		ctx:      ctx,
@@ -287,8 +291,8 @@ func (c *GcsStorage) DeleteFile(ctx context.Context, bucket, key string) error {
 		return err
 	}
 
-	url := c.url(bucket, key)
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	reqURL := c.url(bucket, key)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
 	if err != nil {
 		return err
 	}
@@ -299,7 +303,7 @@ func (c *GcsStorage) DeleteFile(ctx context.Context, bucket, key string) error {
 	}
 
 	if res.StatusCode != 200 && res.StatusCode != 204 {
-		return errors.New(res.Status + " " + url)
+		return errors.New(res.Status + " " + reqURL)
 	}
 
 	return nil
