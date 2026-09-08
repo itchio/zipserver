@@ -301,6 +301,7 @@ func (c *GcsStorage) DeleteFile(ctx context.Context, bucket, key string) error {
 	if err != nil {
 		return err
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != 200 && res.StatusCode != 204 {
 		return errors.New(res.Status + " " + reqURL)
