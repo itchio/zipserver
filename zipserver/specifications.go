@@ -48,6 +48,16 @@ var rewriteSpecs = []RewriteSpec{
 	{".unity3dgz", ".unity3d"},
 }
 
+func hasRewriteExtension(name string) bool {
+	extension := path.Ext(name)
+	for _, spec := range rewriteSpecs {
+		if extension == spec.oldExtension {
+			return true
+		}
+	}
+	return false
+}
+
 func (rs *ResourceSpec) applyRewriteRules() {
 	// rewrite rules only apply when we've identified the gzip suffix
 	if rs.contentEncoding != "gzip" {

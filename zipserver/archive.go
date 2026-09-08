@@ -213,6 +213,40 @@ func (a *ArchiveExtractor) abortUpload(files []ExtractedFile) {
 	}
 }
 
+// destinationName returns the name an entry will be stored under relative to
+// the prefix, including the gzip extension rewrite applied at upload time.
+// Only entries with a rewritable extension are sniffed.
+func destinationName(file *zip.File) (string, error) {
+	name := path.Clean(file.Name)
+	if !hasRewriteExtension(name) {
+		return name, nil
+	}
+
+	reader, err := file.Open()
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	header := make([]byte, 512)
+	n, err := io.ReadFull(reader, header)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+
+	if !isGzipContentType(http.DetectContentType(header[:n])) {
+		return name, nil
+	}
+
+	resource := &ResourceSpec{key: name, contentEncoding: "gzip"}
+	resource.applyRewriteRules()
+	return resource.key, nil
+}
+
+func isGzipContentType(contentType string) bool {
+	return contentType == "application/x-gzip" || contentType == "application/gzip"
+}
+
 func shouldIgnoreFile(fname string) bool {
 	if strings.HasSuffix(fname, "/") {
 		return true
@@ -351,12 +385,16 @@ func (a *ArchiveExtractor) sendZipExtracted(
 			continue
 		}
 
-		// entries like "a.txt" and "./a.txt" resolve to the same destination key
-		cleanName := path.Clean(file.Name)
-		if _, seen := seenNames[cleanName]; seen {
-			return nil, fmt.Errorf("Zip contains duplicate file path: %s", cleanName)
+		// entries like "a.txt" and "./a.txt", or "app.js" and a gzipped
+		// "app.jsgz", resolve to the same destination key
+		destName, err := destinationName(file)
+		if err != nil {
+			return nil, err
 		}
-		seenNames[cleanName] = struct{}{}
+		if _, seen := seenNames[destName]; seen {
+			return nil, fmt.Errorf("Zip contains duplicate file path: %s", destName)
+		}
+		seenNames[destName] = struct{}{}
 
 		// Check only_files list first (takes precedence if specified)
 		if len(limits.OnlyFiles) > 0 {
@@ -507,7 +545,7 @@ func (a *ArchiveExtractor) extractAndUploadOne(ctx context.Context, key string, 
 	// join the bytes read and the original reader
 	reader = io.MultiReader(&buffer, reader)
 
-	if contentMimeType == "application/x-gzip" || contentMimeType == "application/gzip" {
+	if isGzipContentType(contentMimeType) {
 		resource.contentEncoding = "gzip"
 
 		// try to see if there's a real extension hidden beneath

@@ -508,6 +508,46 @@ func Test_ExtractInMemory(t *testing.T) {
 	withZip(&zipLayout{
 		entries: []zipEntry{
 			zipEntry{
+				name:             "app.js",
+				data:             []byte("console.log(1)"),
+				expectedMimeType: "text/javascript; charset=utf-8",
+			},
+			zipEntry{
+				name:                    "app.jsgz",
+				outName:                 "app.js",
+				data:                    []byte{0x1F, 0x8B, 0x08, 3, 7, 3, 4, 12, 53, 26, 34},
+				expectedMimeType:        "application/octet-stream",
+				expectedContentEncoding: "gzip",
+			},
+		},
+	}, func(zl *zipLayout) {
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+		assert.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "duplicate file path: app.js"))
+	})
+
+	// a non-gzip .jsgz is not rewritten, so it does not collide
+	withZip(&zipLayout{
+		entries: []zipEntry{
+			zipEntry{
+				name:             "app.js",
+				data:             []byte("console.log(1)"),
+				expectedMimeType: "text/javascript; charset=utf-8",
+			},
+			zipEntry{
+				name:             "app.jsgz",
+				data:             []byte("not gzip"),
+				expectedMimeType: "text/plain; charset=utf-8",
+			},
+		},
+	}, func(zl *zipLayout) {
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+		assert.NoError(t, err)
+	})
+
+	withZip(&zipLayout{
+		entries: []zipEntry{
+			zipEntry{
 				name:             "1",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
