@@ -50,8 +50,10 @@ var _ Storage = (*S3Storage)(nil)
 
 // PutFile implements Storage interface - uploads a file with the given options
 func (c *S3Storage) PutFile(ctx context.Context, bucket, key string, contents io.Reader, opts PutOptions) (PutResult, error) {
+	// The uploader allocates a full part-sized buffer per upload regardless of
+	// object size, so a small part size keeps the many-small-files case cheap.
 	uploader := s3manager.NewUploaderWithClient(s3.New(c.Session), func(u *s3manager.Uploader) {
-		u.PartSize = 1024 * 1024 * 50 // 50Mb per part to avoid excess API calls
+		u.PartSize = 1024 * 1024 * 8
 	})
 
 	contents = metricsReader(contents, &globalMetrics.TotalBytesUploaded)
