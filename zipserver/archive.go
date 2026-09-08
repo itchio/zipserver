@@ -326,12 +326,20 @@ func (a *ArchiveExtractor) sendZipExtracted(
 	var byteCount uint64
 
 	fileList := []*zip.File{}
+	seenNames := map[string]struct{}{}
 
 	for _, file := range zipReader.File {
 		if shouldIgnoreFile(file.Name) {
 			log.Printf("Ignoring file %s", file.Name)
 			continue
 		}
+
+		// entries like "a.txt" and "./a.txt" resolve to the same destination key
+		cleanName := path.Clean(file.Name)
+		if _, seen := seenNames[cleanName]; seen {
+			return nil, fmt.Errorf("Zip contains duplicate file path: %s", cleanName)
+		}
+		seenNames[cleanName] = struct{}{}
 
 		// Check only_files list first (takes precedence if specified)
 		if len(limits.OnlyFiles) > 0 {

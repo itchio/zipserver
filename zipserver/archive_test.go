@@ -489,6 +489,25 @@ func Test_ExtractInMemory(t *testing.T) {
 	withZip(&zipLayout{
 		entries: []zipEntry{
 			zipEntry{
+				name:             "index.html",
+				data:             []byte("first"),
+				expectedMimeType: "text/plain; charset=utf-8",
+			},
+			zipEntry{
+				name:             "./index.html",
+				data:             []byte("second"),
+				expectedMimeType: "text/plain; charset=utf-8",
+			},
+		},
+	}, func(zl *zipLayout) {
+		_, err := archiver.ExtractZip(ctx, zipPath, prefix, testLimits())
+		assert.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "duplicate file path"))
+	})
+
+	withZip(&zipLayout{
+		entries: []zipEntry{
+			zipEntry{
 				name:             "1",
 				data:             []byte("uh oh"),
 				expectedMimeType: "text/plain; charset=utf-8",
