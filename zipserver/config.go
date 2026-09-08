@@ -229,6 +229,10 @@ type Config struct {
 	FilePutTimeout           Duration `json:",omitempty"` // Time to upload a single object
 	AsyncNotificationTimeout Duration `json:",omitempty"` // Time to complete webhook request
 
+	// How long a shutdown waits for in-flight requests, async jobs, and
+	// pending callbacks before exiting anyway.
+	ShutdownTimeout Duration `json:",omitempty"`
+
 	// Backoff schedule for retrying failed callback deliveries (transport
 	// error or non-2xx response). One attempt is made plus one per entry; an
 	// explicit empty list disables retries.
@@ -291,6 +295,7 @@ var defaultConfig = Config{
 	FileGetTimeout:           Duration(1 * time.Minute),
 	FilePutTimeout:           Duration(1 * time.Minute),
 	AsyncNotificationTimeout: Duration(5 * time.Second),
+	ShutdownTimeout:          Duration(10 * time.Minute),
 
 	CallbackRetryDelays: []Duration{
 		Duration(5 * time.Second),

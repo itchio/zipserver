@@ -385,17 +385,6 @@ func (a *ArchiveExtractor) sendZipExtracted(
 			continue
 		}
 
-		// entries like "a.txt" and "./a.txt", or "app.js" and a gzipped
-		// "app.jsgz", resolve to the same destination key
-		destName, err := destinationName(file)
-		if err != nil {
-			return nil, err
-		}
-		if _, seen := seenNames[destName]; seen {
-			return nil, fmt.Errorf("Zip contains duplicate file path: %s", destName)
-		}
-		seenNames[destName] = struct{}{}
-
 		// Check only_files list first (takes precedence if specified)
 		if len(limits.OnlyFiles) > 0 {
 			if !shouldIncludeFileByList(file.Name, limits.OnlyFiles) {
@@ -411,6 +400,17 @@ func (a *ArchiveExtractor) sendZipExtracted(
 				continue
 			}
 		}
+
+		// entries like "a.txt" and "./a.txt", or "app.js" and a gzipped
+		// "app.jsgz", resolve to the same destination key
+		destName, err := destinationName(file)
+		if err != nil {
+			return nil, err
+		}
+		if _, seen := seenNames[destName]; seen {
+			return nil, fmt.Errorf("Zip contains duplicate file path: %s", destName)
+		}
+		seenNames[destName] = struct{}{}
 
 		if limits.MaxFileNameLength > 0 && len(file.Name) > limits.MaxFileNameLength {
 			return nil, fmt.Errorf("Zip contains file paths that are too long")

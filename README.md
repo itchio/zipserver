@@ -562,6 +562,18 @@ Zipserver supports systemd's sandboxing features through environment variables:
 
 When `CREDENTIALS_DIRECTORY` is set, zipserver checks this directory first when loading credential files (e.g., `PrivateKeyPath`, `GCSPrivateKeyPath`). This allows your config to use relative paths like `"PrivateKeyPath": "secret/storage.pem"` while systemd loads the actual file via `LoadCredential=`.
 
+### Graceful Shutdown
+
+On `SIGTERM` or `SIGINT` the server stops accepting connections and waits for
+in-flight requests, async jobs, and pending callbacks to finish before
+exiting. The wait is capped by `ShutdownTimeout` in the config (default
+`10m`); anything still running at the deadline is abandoned. A second signal
+kills the process immediately.
+
+Set `TimeoutStopSec=` on the unit to a value larger than `ShutdownTimeout`,
+otherwise systemd sends `SIGKILL` after its default 90 seconds and aborts
+work in progress.
+
 ### Example Hardened Unit File
 
 ```ini
@@ -581,6 +593,9 @@ ExecStart=/usr/local/bin/zipserver --config=${CREDENTIALS_DIRECTORY}/zipserver.j
 # Temp directory for zip extraction
 RuntimeDirectory=zipserver
 RuntimeDirectoryMode=0700
+
+# Must exceed ShutdownTimeout so in-flight jobs finish before SIGKILL
+TimeoutStopSec=11min
 
 # Filesystem restrictions
 ProtectSystem=strict

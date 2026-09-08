@@ -249,7 +249,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// async codepath
-	go func() {
+	startJob(func() {
 		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
 
@@ -282,7 +282,7 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) error {
 			globalMetrics.TotalErrors.Add(1)
 			log.Printf("Delete async (callback=-) had %d errors: %v", len(result.Errors), result.Errors)
 		}
-	}()
+	})
 
 	return writeJSONMessage(w, struct {
 		Processing bool

@@ -306,7 +306,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 
 		case <-time.After(syncTimeout):
 			// Timeout expired - switch to async mode
-			go func() {
+			startJob(func() {
 				defer jobCancel()
 				defer copyLockTable.releaseKey(lockKey)
 
@@ -334,7 +334,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 					}
 					notifyCallback(callbackURL, resValues)
 				}
-			}()
+			})
 
 			return writeJSONMessage(w, struct {
 				Processing bool
@@ -344,7 +344,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// async codepath
-	go (func() {
+	startJob(func() {
 		defer copyLockTable.releaseKey(lockKey)
 
 		jobCtx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
@@ -375,7 +375,7 @@ func copyHandler(w http.ResponseWriter, r *http.Request) error {
 
 			notifyCallback(callbackURL, resValues)
 		}
-	})()
+	})
 
 	return writeJSONMessage(w, struct {
 		Processing bool

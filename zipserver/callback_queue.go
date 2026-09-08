@@ -29,6 +29,7 @@ type CallbackQueue struct {
 	mu      sync.Mutex
 	pending map[int64]*PendingCallback
 	nextID  int64
+	wg      sync.WaitGroup
 }
 
 // PendingCallback tracks one callback through its delivery attempts. Mutable
@@ -96,10 +97,18 @@ func (q *CallbackQueue) Enqueue(config *Config, callbackURL string, values url.V
 	q.pending[entry.ID] = entry
 	q.mu.Unlock()
 
+	q.wg.Add(1)
 	go q.deliver(entry)
 }
 
+// Wait blocks until every pending callback has been delivered or dropped, or
+// ctx expires.
+func (q *CallbackQueue) Wait(ctx context.Context) error {
+	return waitGroupWithContext(ctx, &q.wg)
+}
+
 func (q *CallbackQueue) deliver(entry *PendingCallback) {
+	defer q.wg.Done()
 	totalAttempts := len(entry.delays) + 1
 
 	for attempt := 0; ; attempt++ {

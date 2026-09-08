@@ -1,16 +1,20 @@
 package zipserver
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
-
-	"fmt"
+	"syscall"
+	"time"
 )
 
 var globalConfig *Config
@@ -189,5 +193,51 @@ func StartZipServer(listenTo string, _config *Config) error {
 	mux.Handle("/metrics", wrapErrors(metricsHandler))
 
 	log.Print("Listening on: " + listenTo)
-	return http.ListenAndServe(listenTo, mux)
+
+	server := &http.Server{Addr: listenTo, Handler: mux}
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- server.ListenAndServe()
+	}()
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+
+	select {
+	case err := <-serverErr:
+		return err
+	case sig := <-signals:
+		// A second signal falls through to the default handler and kills the process.
+		signal.Stop(signals)
+		return drainServer(server, sig)
+	}
+}
+
+// drainServer stops accepting connections, then waits for in-flight
+// requests, detached async jobs, and pending callbacks up to ShutdownTimeout.
+func drainServer(server *http.Server, sig os.Signal) error {
+	timeout := time.Duration(globalConfig.ShutdownTimeout)
+	log.Printf("Received %s, draining (timeout %v)", sig, timeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("Drain: HTTP shutdown incomplete: %s", err)
+	}
+
+	if err := waitGroupWithContext(ctx, &activeJobs); err != nil {
+		log.Printf("Drain: async jobs still running at deadline, exiting anyway")
+		return nil
+	}
+
+	if err := globalCallbackQueue.Wait(ctx); err != nil {
+		pending := len(globalCallbackQueue.GetPending())
+		log.Printf("Drain: %d callbacks still pending at deadline, exiting anyway", pending)
+		return nil
+	}
+
+	log.Print("Drain complete")
+	return nil
 }

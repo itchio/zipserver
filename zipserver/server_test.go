@@ -1,10 +1,15 @@
 package zipserver
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,4 +121,105 @@ func TestWrapErrorsHandlerErrorStillReturns500(t *testing.T) {
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "boom")
+}
+
+func TestDrainServerWaitsForJobs(t *testing.T) {
+	oldConfig := globalConfig
+	globalConfig = &Config{ShutdownTimeout: Duration(5 * time.Second)}
+	defer func() { globalConfig = oldConfig }()
+
+	server := &http.Server{Addr: "127.0.0.1:0", Handler: http.NewServeMux()}
+
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	startJob(func() {
+		<-release
+		close(finished)
+	})
+
+	drained := make(chan error, 1)
+	go func() { drained <- drainServer(server, syscall.SIGTERM) }()
+
+	select {
+	case <-drained:
+		t.Fatal("drain returned before job finished")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	<-finished
+
+	select {
+	case err := <-drained:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("drain did not return after job finished")
+	}
+}
+
+func TestDrainServerDeadline(t *testing.T) {
+	oldConfig := globalConfig
+	globalConfig = &Config{ShutdownTimeout: Duration(100 * time.Millisecond)}
+	defer func() { globalConfig = oldConfig }()
+
+	server := &http.Server{Addr: "127.0.0.1:0", Handler: http.NewServeMux()}
+
+	release := make(chan struct{})
+	startJob(func() { <-release })
+	defer close(release)
+
+	start := time.Now()
+	require.NoError(t, drainServer(server, syscall.SIGTERM))
+	assert.Less(t, time.Since(start), 2*time.Second)
+}
+
+// An async copy (callback set, no sync_timeout) must hold the drain open
+// until it finishes.
+func TestDrainServerWaitsForAsyncCopy(t *testing.T) {
+	oldConfig := globalConfig
+	globalConfig = copyHandlerTestConfig()
+	globalConfig.CopyMaxConcurrent = 1
+	globalConfig.ShutdownTimeout = Duration(5 * time.Second)
+	defer func() { globalConfig = oldConfig }()
+
+	// Hold the only copy slot so the job blocks before touching storage.
+	limiter := globalConfig.getCopyLimiter()
+	require.NoError(t, limiter.acquire(context.Background()))
+	released := false
+	defer func() {
+		if !released {
+			limiter.release()
+		}
+	}()
+
+	form := url.Values{}
+	form.Set("key", "some/file.txt")
+	form.Set("target", "test-target")
+	form.Set("callback", "-")
+
+	req := httptest.NewRequest(http.MethodPost, "/copy", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	require.NoError(t, copyHandler(w, req))
+	assert.Contains(t, w.Body.String(), `"Async":true`)
+
+	server := &http.Server{Addr: "127.0.0.1:0", Handler: http.NewServeMux()}
+	drained := make(chan error, 1)
+	go func() { drained <- drainServer(server, syscall.SIGTERM) }()
+
+	select {
+	case <-drained:
+		t.Fatal("drain returned while async copy was still blocked")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	limiter.release()
+	released = true
+
+	select {
+	case err := <-drained:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("drain did not return after async copy finished")
+	}
 }

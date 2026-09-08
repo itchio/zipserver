@@ -214,7 +214,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	// async codepath
-	go (func() {
+	startJob(func() {
 		defer extractLockTable.releaseKey(lockKey)
 
 		// This job is expected to outlive the incoming request, so create a detached context.
@@ -244,7 +244,7 @@ func extractHandler(w http.ResponseWriter, r *http.Request) error {
 
 		log.Print("Notifying " + asyncURL)
 		notifyCallback(asyncURL, resValues)
-	})()
+	})
 
 	return writeJSONMessage(w, struct {
 		Processing bool

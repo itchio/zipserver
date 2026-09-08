@@ -175,7 +175,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		}{true})
 	}
 
-	go (func() {
+	startJob(func() {
 		// This job is expected to outlive the incoming request, so create a detached context.
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(globalConfig.JobTimeout))
 		defer cancel()
@@ -197,7 +197,7 @@ func slurpHandler(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		notifyCallback(asyncURL, resValues)
-	})()
+	})
 
 	return writeJSONMessage(w, struct {
 		Processing bool
